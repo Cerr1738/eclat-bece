@@ -4,6 +4,9 @@ import eclatlLogo from "@/assets/logo.png";
 
 export default function SignUpRoleSelectionPage({ login = false }: { login?: boolean }) {
   const navigate = useNavigate();
+  useRedirectIfAuthenticated();
+  const { theme } = useTheme();
+  const logo = theme === "dark" ? logoLight : logoDark;
 
   const roles = [
     {

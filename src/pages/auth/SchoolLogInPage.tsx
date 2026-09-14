@@ -16,6 +16,7 @@ const loginSchema = z.object({
 
 export default function SchoolLogInPage() {
   const navigate = useNavigate();
+  useRedirectIfAuthenticated();
   const [isLoading, setIsLoading] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const { toast } = useToast();
@@ -61,22 +62,47 @@ export default function SchoolLogInPage() {
       if (!data.user?.email_confirmed_at) {
         toast({
           title: "Email Not Verified",
-          description: "Please verify your email before logging in.",
+          description: "Please verify your email before logging in. Redirecting to verification...",
           variant: "destructive",
         });
+        const unverifiedUserId = data.user.id;
+        const unverifiedEmail = validated.email;
         await supabase.auth.signOut();
         setIsLoading(false);
+        navigate(`/verify-email?email=${encodeURIComponent(unverifiedEmail)}&role=school&user_id=${unverifiedUserId}`);
         return;
       }
 
       // Get user's role from database
-      const { data: roleData } = await supabase
+      let { data: roleData } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", data.user.id)
         .maybeSingle();
 
-      const userRole = roleData?.role as string | undefined;
+      let userRole = roleData?.role as string | undefined;
+
+      // Defense-in-depth: If role is missing, attempt auto-provisioning via provision-user
+      if (!userRole && data.session?.access_token) {
+        try {
+          const { error: provError } = await supabase.functions.invoke("provision-user", {
+            headers: { Authorization: `Bearer ${data.session.access_token}` },
+            body: { role: "school" },
+          });
+
+          if (!provError) {
+            const { data: refreshedRole } = await supabase
+              .from("user_roles")
+              .select("role")
+              .eq("user_id", data.user.id)
+              .maybeSingle();
+
+            userRole = refreshedRole?.role as string | undefined;
+          }
+        } catch (provErr) {
+          console.error("Fallback role provisioning error:", provErr);
+        }
+      }
 
       if (!userRole) {
         toast({
@@ -84,6 +110,7 @@ export default function SchoolLogInPage() {
           description: "Please complete your account setup.",
           variant: "destructive",
         });
+        await supabase.auth.signOut();
         setIsLoading(false);
         return;
       }
@@ -91,8 +118,8 @@ export default function SchoolLogInPage() {
       // Validate that user is a school
       if (userRole !== "school") {
         toast({
-          title: "Wrong Login Portal",
-          description: `This account is registered as a ${userRole}. Please use the ${userRole} login.`,
+          title: "Account Incompatible",
+          description: "This email is registered under a different account type and cannot be used for School access. Please sign in through your designated portal or use a different email.",
           variant: "destructive",
         });
         await supabase.auth.signOut();
@@ -123,17 +150,15 @@ export default function SchoolLogInPage() {
   const handleGoogleLogin = async () => {
     try {
       setIsLoading(true);
-
-      // Store role in localStorage before OAuth redirect
-      localStorage.setItem('pendingRole', 'school');
+      localStorage.setItem("pendingRole", "school");
 
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+        provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback?role=school`,
           queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
+            access_type: "offline",
+            prompt: "select_account",
           },
         },
       });

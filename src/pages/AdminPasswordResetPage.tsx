@@ -12,76 +12,54 @@ import {
   CheckCircle2,
   XCircle,
   ArrowRight,
+  Shield,
+  KeyRound,
+  AlertCircle,
   RotateCcw,
   UserCheck,
   LogOut,
-  LayoutDashboard,
+  Sliders,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { z } from "zod";
-import { getSafeErrorMessage } from "@/lib/errorUtils";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { useAuth } from "@/hooks/useAuth";
 
-const resetEmailSchema = z.object({
-  email: z.string().trim().email("Invalid email address").max(255),
+const emailSchema = z.object({
+  email: z.string().trim().email("Invalid administrator email address"),
 });
 
-const resetPasswordSchema = z.object({
-  password: z.string().min(6, "Password must be at least 6 characters").max(100),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
-});
-
-export default function PasswordResetPage() {
+export default function AdminPasswordResetPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { toast } = useToast();
   const { signOut } = useAuth();
-
-  const role = (searchParams.get("role") || "parent") as "parent" | "school" | "student" | "admin" | "general";
-  const loginPath = role === "parent"
-    ? "/parent-login"
-    : role === "school"
-    ? "/school-login"
-    : role === "student"
-    ? "/student-login"
-    : role === "admin"
-    ? "/admin/login"
-    : "/auth/login/role-selection";
-
-  const dashboardPath = role === "parent"
-    ? "/dashboard/parent"
-    : role === "school"
-    ? "/dashboard/school"
-    : role === "student"
-    ? "/dashboard/student"
-    : role === "admin"
-    ? "/admin"
-    : "/";
 
   const tokenHash = searchParams.get("token_hash");
   const hasTokenInUrl = Boolean(tokenHash);
 
+  // State
   const hasVerifiedRef = useRef(false);
   const [isVerifyingToken, setIsVerifyingToken] = useState(hasTokenInUrl);
   const [tokenInvalid, setTokenInvalid] = useState(false);
   const [isUpdateMode, setIsUpdateMode] = useState(false);
-  const [activeUser, setActiveUser] = useState<{ email?: string; role?: string } | null>(null);
+  const [activeUser, setActiveUser] = useState<{ email?: string; fullName?: string } | null>(null);
   const [showOverrideForm, setShowOverrideForm] = useState(false);
 
+  const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+
+  // New Password State
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   // Handle direct recovery token verification (token_hash)
   useEffect(() => {
     if (tokenHash) {
-      // Guard against React 18 StrictMode double-invoking verifyOtp and burning single-use OTP
       if (hasVerifiedRef.current) return;
       hasVerifiedRef.current = true;
 
@@ -107,27 +85,21 @@ export default function PasswordResetPage() {
             console.error("Token verification error:", error);
             setTokenInvalid(true);
             setIsUpdateMode(false);
-            toast({
-              title: "Link Expired or Invalid",
-              description: "This password recovery link is invalid or has expired. Please request a new one.",
-              variant: "destructive",
-            });
+            setErrorMsg("This password recovery link is invalid or has expired. Please request a new one.");
           } else {
             setTokenInvalid(false);
             setIsUpdateMode(true);
-            toast({
-              title: "Token Verified",
-              description: "Please configure your new password below.",
-            });
+            toast.success("Security token verified. Please configure your new master password.");
           }
         })
         .catch((err) => {
           setIsVerifyingToken(false);
           setTokenInvalid(true);
           setIsUpdateMode(false);
+          setErrorMsg("Failed to verify security token. Please request a new recovery link.");
         });
     } else {
-      // Check if user is already signed in (direct visit, not recovery)
+      // If no token_hash, check if user is already signed in (direct visit)
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session?.user) {
           // Show the "already signed in" prompt.
@@ -135,12 +107,14 @@ export default function PasswordResetPage() {
           // in the next useEffect will override this and switch to update mode.
           setActiveUser({
             email: session.user.email,
+            fullName: session.user.user_metadata?.full_name || "Administrator",
           });
         }
       });
     }
-  }, [tokenHash, toast]);
+  }, [tokenHash]);
 
+  // Listen for Supabase password recovery event
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
@@ -155,105 +129,101 @@ export default function PasswordResetPage() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Password Validation Criteria
+  const hasMinLength = newPassword.length >= 8;
+  const hasUppercase = /[A-Z]/.test(newPassword);
+  const hasLowercase = /[a-z]/.test(newPassword);
+  const hasNumber = /[0-9]/.test(newPassword);
+  const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
+  const isPasswordValid =
+    hasMinLength && hasUppercase && hasLowercase && hasNumber && passwordsMatch;
+
+  // Step 1: Send Reset Link via Edge Function
   const handleSendResetEmail = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setErrorMsg("");
 
     try {
-      const formData = new FormData(e.target as HTMLFormElement);
-      const email = formData.get("email") as string;
+      const validated = emailSchema.parse({ email });
+      setIsLoading(true);
 
-      const validated = resetEmailSchema.parse({ email });
-
-      // Dispatch via Origin-Aware send-password-reset Edge Function with Resend
       const { data, error } = await supabase.functions.invoke("send-password-reset", {
         body: {
           email: validated.email,
           siteUrl: window.location.origin,
-          role: role,
+          role: "admin",
         },
       });
 
       if (error) {
-        throw new Error(error.message || "Failed to send reset email");
+        throw new Error(error.message || "Failed to dispatch password recovery link");
       }
 
       const result = data as any;
       if (result && result.success === false) {
-        throw new Error(result.error || "Failed to send reset email");
+        throw new Error(result.error || "Failed to dispatch password recovery link");
       }
 
       setEmailSent(true);
-      toast({
-        title: "Email Sent!",
-        description: "Check your email for password reset instructions.",
-      });
-    } catch (error: unknown) {
-      if (error instanceof z.ZodError) {
-        toast({
-          title: "Validation Error",
-          description: error.errors[0].message,
-          variant: "destructive",
-        });
+      toast.success("Security reset link dispatched to your email!");
+    } catch (err: any) {
+      console.error("Admin reset email error:", err);
+      if (err instanceof z.ZodError) {
+        setErrorMsg(err.errors[0].message);
       } else {
-        toast({
-          title: "Error",
-          description: getSafeErrorMessage(error),
-          variant: "destructive",
-        });
+        setErrorMsg(err.message || "Failed to dispatch reset link. Please try again.");
       }
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Step 2: Set New Admin Password (with OWASP ASVS 2.8 Clean Termination)
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg("");
+
+    if (!isPasswordValid) {
+      setErrorMsg("Please satisfy all password security requirements below.");
+      return;
+    }
+
     setIsLoading(true);
-
     try {
-      const formData = new FormData(e.target as HTMLFormElement);
-      const password = formData.get("password") as string;
-      const confirmPassword = formData.get("confirmPassword") as string;
-
-      const validated = resetPasswordSchema.parse({ password, confirmPassword });
-
-      const { error } = await supabase.auth.updateUser({
-        password: validated.password,
+      const { data: updateData, error } = await supabase.auth.updateUser({
+        password: newPassword,
       });
 
-      if (error) {
-        toast({
-          title: "Error",
-          description: getSafeErrorMessage(error),
-          variant: "destructive",
-        });
-        return;
+      if (error) throw error;
+
+      // Log audit action
+      try {
+        if (updateData?.user) {
+          const { data: adminId } = await supabase.rpc("get_admin_id", {
+            _user_id: updateData.user.id,
+          });
+          if (adminId) {
+            await supabase.rpc("log_admin_action", {
+              _admin_id: adminId,
+              _action: "reset_password_recovery",
+              _resource_type: "admin",
+              _resource_id: adminId,
+              _details: { status: "success" },
+            });
+          }
+        }
+      } catch (logErr) {
+        console.warn("Could not log recovery password update:", logErr);
       }
 
       // OWASP ASVS 2.8: Sign out of recovery session so the user must authenticate cleanly
       await supabase.auth.signOut();
 
-      toast({
-        title: "Password Updated!",
-        description: "Your password has been successfully reset. Please sign in.",
-      });
-
-      navigate(loginPath);
-    } catch (error: unknown) {
-      if (error instanceof z.ZodError) {
-        toast({
-          title: "Validation Error",
-          description: error.errors[0].message,
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "An unexpected error occurred",
-          variant: "destructive",
-        });
-      }
+      toast.success("Administrator password updated successfully! Please sign in with your new credentials.");
+      navigate("/admin/login", { replace: true });
+    } catch (err: any) {
+      console.error("Admin password update error:", err);
+      setErrorMsg(err.message || "Failed to update password. Recovery link may have expired.");
     } finally {
       setIsLoading(false);
     }
@@ -265,57 +235,68 @@ export default function PasswordResetPage() {
     setEmailSent(false);
     setActiveUser(null);
     setShowOverrideForm(true);
+    setErrorMsg("");
     hasVerifiedRef.current = false;
-    navigate(role === "general" ? "/password-reset" : `/password-reset?role=${role}`, { replace: true });
+    navigate("/admin/reset-password", { replace: true });
   };
 
   const handleSignOutToRecover = async () => {
-    await signOut(role === "general" ? "/password-reset" : `/password-reset?role=${role}`);
+    await signOut("/admin/reset-password");
     setActiveUser(null);
     setShowOverrideForm(true);
   };
 
   return (
     <AuthLayout
-      role={role}
-      badgeText="Account Recovery"
+      role="admin"
+      badgeText="Staff Security"
       title={
         tokenInvalid
           ? "Link Expired or Invalid"
           : isUpdateMode
-          ? "Create New Password"
+          ? "Configure New Password"
           : activeUser && !showOverrideForm
           ? "Already Signed In"
-          : "Reset Password"
+          : "Admin Password Reset"
       }
       subtitle={
         tokenInvalid
           ? "This recovery link is no longer valid. Please request a fresh reset link."
           : isUpdateMode
-          ? "Enter and confirm your new secure password"
+          ? "Set up a new secure password for your administrator account."
           : activeUser && !showOverrideForm
-          ? `You are currently logged in as ${activeUser.email}.`
+          ? `You are currently signed in as ${activeUser.email}.`
           : emailSent
-          ? "Check your inbox for recovery instructions"
-          : "Enter your registered email to receive a password reset link"
+          ? "Check your email for authorized recovery instructions."
+          : "Enter your staff email address to receive an authorized password recovery link."
       }
       footerLink={{
         text: "Remembered your credentials?",
-        actionText: "Back to Login",
-        to: loginPath,
+        actionText: "Return to Admin Sign In",
+        to: "/admin/login",
       }}
     >
+      {/* Error Alert */}
+      {errorMsg && !tokenInvalid && (
+        <div className="mb-4 bg-destructive/10 border border-destructive/30 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-destructive animate-fade-in">
+          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <p className="font-semibold leading-relaxed">{errorMsg}</p>
+        </div>
+      )}
+
+      {/* State 1: Verifying Token */}
       {isVerifyingToken ? (
         <div className="py-12 flex flex-col items-center justify-center space-y-3 text-center animate-fade-in">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-sm font-semibold text-foreground">
-            Verifying recovery link...
+            Verifying secure password recovery token...
           </p>
           <p className="text-xs text-muted-foreground">
-            Please wait while we validate your credentials.
+            Please wait while we authorize your administrator session.
           </p>
         </div>
       ) : tokenInvalid ? (
+        /* State 2: Invalid / Expired Token Screen */
         <div className="text-center space-y-4 py-3 animate-fade-in">
           <div className="w-14 h-14 rounded-2xl bg-destructive/10 border border-destructive/20 text-destructive flex items-center justify-center mx-auto">
             <XCircle size={32} />
@@ -334,36 +315,39 @@ export default function PasswordResetPage() {
               onClick={handleResetForm}
               className="w-full h-11 text-xs font-bold rounded-xl gap-1.5 shadow-md"
             >
-              <RotateCcw size={14} /> Request New Reset Link
+              <RotateCcw size={14} /> Request New Recovery Link
             </Button>
             <Button
               variant="outline"
-              onClick={() => navigate(loginPath)}
-              className="w-full h-10 text-xs font-bold rounded-xl border-2"
+              onClick={() => navigate("/admin/login")}
+              className="w-full h-10 text-xs font-bold rounded-xl border-2 gap-1.5"
             >
-              Return to Login
+              <Shield size={14} /> Return to Admin Sign In
             </Button>
           </div>
         </div>
       ) : isUpdateMode ? (
+        /* State 3: Valid Recovery Token -> Update Password Form */
         <form onSubmit={handleUpdatePassword} className="space-y-4">
+          {/* New Password */}
           <div className="space-y-2">
-            <Label htmlFor="password" className="text-sm font-bold text-foreground">
-              New Password
+            <Label htmlFor="admin-new-password" className="text-sm font-bold text-foreground">
+              New Master Password
             </Label>
             <div className="relative">
               <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
                 <Lock size={19} />
               </div>
               <Input
-                id="password"
-                name="password"
+                id="admin-new-password"
                 type={showPassword ? "text" : "password"}
-                placeholder="••••••••"
+                placeholder="••••••••••••"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
                 required
-                minLength={6}
-                maxLength={100}
+                disabled={isLoading}
                 className="pl-11 pr-11 h-12 bg-background border-2 border-border hover:border-primary/50 focus:border-primary focus:ring-4 focus:ring-primary/15 rounded-xl text-base font-medium text-foreground placeholder:text-muted-foreground/60 shadow-xs"
+                autoComplete="new-password"
               />
               <button
                 type="button"
@@ -375,23 +359,25 @@ export default function PasswordResetPage() {
             </div>
           </div>
 
+          {/* Confirm New Password */}
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword" className="text-sm font-bold text-foreground">
-              Confirm New Password
+            <Label htmlFor="admin-confirm-password" className="text-sm font-bold text-foreground">
+              Confirm Master Password
             </Label>
             <div className="relative">
               <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
                 <Lock size={19} />
               </div>
               <Input
-                id="confirmPassword"
-                name="confirmPassword"
+                id="admin-confirm-password"
                 type={showConfirmPassword ? "text" : "password"}
-                placeholder="••••••••"
+                placeholder="••••••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                minLength={6}
-                maxLength={100}
+                disabled={isLoading}
                 className="pl-11 pr-11 h-12 bg-background border-2 border-border hover:border-primary/50 focus:border-primary focus:ring-4 focus:ring-primary/15 rounded-xl text-base font-medium text-foreground placeholder:text-muted-foreground/60 shadow-xs"
+                autoComplete="new-password"
               />
               <button
                 type="button"
@@ -403,26 +389,56 @@ export default function PasswordResetPage() {
             </div>
           </div>
 
+          {/* Live Password Checklist */}
+          {newPassword.length > 0 && (
+            <div className="p-3.5 rounded-2xl bg-muted/40 border space-y-2 animate-fade-in text-xs">
+              <p className="font-bold text-foreground">Security Requirements:</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
+                <div className={`flex items-center gap-1.5 ${hasMinLength ? "text-emerald-500 font-semibold" : "text-muted-foreground"}`}>
+                  {hasMinLength ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                  <span>At least 8 characters</span>
+                </div>
+                <div className={`flex items-center gap-1.5 ${hasUppercase ? "text-emerald-500 font-semibold" : "text-muted-foreground"}`}>
+                  {hasUppercase ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                  <span>Uppercase letter (A-Z)</span>
+                </div>
+                <div className={`flex items-center gap-1.5 ${hasLowercase ? "text-emerald-500 font-semibold" : "text-muted-foreground"}`}>
+                  {hasLowercase ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                  <span>Lowercase letter (a-z)</span>
+                </div>
+                <div className={`flex items-center gap-1.5 ${hasNumber ? "text-emerald-500 font-semibold" : "text-muted-foreground"}`}>
+                  {hasNumber ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                  <span>At least 1 number (0-9)</span>
+                </div>
+                <div className={`flex items-center gap-1.5 sm:col-span-2 ${passwordsMatch ? "text-emerald-500 font-semibold" : "text-muted-foreground"}`}>
+                  {passwordsMatch ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                  <span>Passwords match</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action Button */}
           <Button
             type="submit"
             variant="hero"
             className="w-full h-12 text-base font-extrabold shadow-md rounded-xl bg-gradient-to-r from-primary to-accent hover:opacity-95 text-white transition-all mt-3"
-            disabled={isLoading}
+            disabled={isLoading || !isPasswordValid}
           >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Updating Password...
+                Updating Administrator Password...
               </>
             ) : (
               <>
-                Save New Password <ArrowRight className="ml-1.5 h-4 w-4" />
+                Save Administrator Password <ArrowRight className="ml-1.5 h-4 w-4" />
               </>
             )}
           </Button>
         </form>
       ) : activeUser && !showOverrideForm ? (
-        /* Smart Prompt for Already Signed-In User */
+        /* State 4: Smart Prompt for Already Signed-In User */
         <div className="text-center space-y-4 py-3 animate-fade-in">
           <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center mx-auto">
             <UserCheck size={32} />
@@ -432,17 +448,17 @@ export default function PasswordResetPage() {
               You are currently logged in
             </h3>
             <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed px-2">
-              You are signed in as <strong>{activeUser.email}</strong>. To manage your account or password, visit your dashboard. If you need to recover a different account, please sign out first.
+              You are logged in as <strong>{activeUser.email}</strong>. To update your password, you can change it directly in your Admin Settings tab.
             </p>
           </div>
 
           <div className="pt-2 space-y-2">
             <Button
               variant="hero"
-              onClick={() => navigate(dashboardPath)}
+              onClick={() => navigate("/admin/settings")}
               className="w-full h-11 text-xs font-bold rounded-xl gap-1.5 shadow-md"
             >
-              <LayoutDashboard size={14} /> Go to Dashboard
+              <Sliders size={14} /> Go to Admin Settings (Change Password)
             </Button>
             <Button
               variant="outline"
@@ -461,39 +477,48 @@ export default function PasswordResetPage() {
           </div>
         </div>
       ) : emailSent ? (
-        <div className="text-center space-y-4 py-4">
+        /* State 5: Email Sent Screen */
+        <div className="text-center space-y-4 py-3 animate-fade-in">
           <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-center justify-center mx-auto">
-            <CheckCircle2 size={30} />
+            <CheckCircle2 size={32} />
           </div>
-          <p className="text-sm text-muted-foreground leading-relaxed px-2">
-            We have dispatched a secure password reset link to your email address. Please click the link to configure a new password.
-          </p>
-          <Button
-            variant="outline"
-            onClick={() => navigate(loginPath)}
-            className="w-full h-11 text-sm font-bold rounded-xl border-2"
-          >
-            Return to Login
-          </Button>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-foreground">Recovery Link Dispatched</h3>
+            <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed px-2">
+              We have sent a secure password recovery email to <strong>{email}</strong>. Click the link in the message to configure your new master password.
+            </p>
+          </div>
+          <div className="pt-2">
+            <Button
+              variant="outline"
+              onClick={() => navigate("/admin/login")}
+              className="w-full h-11 text-xs font-bold rounded-xl border-2 gap-1.5"
+            >
+              <Shield size={14} /> Return to Admin Login
+            </Button>
+          </div>
         </div>
       ) : (
+        /* State 6: Request Reset Link Form */
         <form onSubmit={handleSendResetEmail} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-sm font-bold text-foreground">
-              Registered Email Address
+            <Label htmlFor="admin-email" className="text-sm font-bold text-foreground">
+              Administrator Email Address
             </Label>
             <div className="relative">
               <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
                 <Mail size={19} />
               </div>
               <Input
-                id="email"
-                name="email"
+                id="admin-email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder="admin@eclat.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
-                maxLength={255}
+                disabled={isLoading}
                 className="pl-11 h-12 bg-background border-2 border-border hover:border-primary/50 focus:border-primary focus:ring-4 focus:ring-primary/15 rounded-xl text-base font-medium text-foreground placeholder:text-muted-foreground/60 shadow-xs"
+                autoComplete="email"
               />
             </div>
           </div>
@@ -502,16 +527,16 @@ export default function PasswordResetPage() {
             type="submit"
             variant="hero"
             className="w-full h-12 text-base font-extrabold shadow-md rounded-xl bg-gradient-to-r from-primary to-accent hover:opacity-95 text-white transition-all mt-3"
-            disabled={isLoading}
+            disabled={isLoading || !email.trim()}
           >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Sending Link...
+                Dispatching Reset Link...
               </>
             ) : (
               <>
-                Send Reset Link <ArrowRight className="ml-1.5 h-4 w-4" />
+                Send Recovery Link <ArrowRight className="ml-1.5 h-4 w-4" />
               </>
             )}
           </Button>
@@ -519,10 +544,10 @@ export default function PasswordResetPage() {
           <Button
             type="button"
             variant="ghost"
-            onClick={() => navigate(loginPath)}
+            onClick={() => navigate("/admin/login")}
             className="w-full h-10 text-xs font-bold rounded-xl text-muted-foreground hover:text-foreground"
           >
-            Cancel & Go Back
+            Cancel & Return to Admin Sign In
           </Button>
         </form>
       )}

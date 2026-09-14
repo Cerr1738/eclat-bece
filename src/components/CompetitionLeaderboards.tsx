@@ -1,6 +1,7 @@
 import { Trophy, Calendar, Crown, Clock, Medal } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 
 export interface LeaderboardStudent {
   rank: number;
@@ -9,6 +10,7 @@ export interface LeaderboardStudent {
   points: number;
   avatar: string;
   isCurrentUser?: boolean;
+  schoolId?: string | null;
 }
 
 interface CompetitionLeaderboardsProps {
@@ -24,7 +26,10 @@ interface CompetitionLeaderboardsProps {
     monthly: number;
     annual: number;
   };
+  limit?: number;
 }
+
+const ITEMS_PER_PAGE = 10;
 
 export const CompetitionLeaderboards = ({
   showCurrentUserPosition = false,
@@ -33,17 +38,68 @@ export const CompetitionLeaderboards = ({
   annualLeaders = [],
   currentUserRanks = { monthly: 12, annual: 8 },
   currentUserPoints = { monthly: 0, annual: 0 },
+  limit,
 }: CompetitionLeaderboardsProps) => {
+  const [monthlyPage, setMonthlyPage] = useState(1);
+  const [annualPage, setAnnualPage] = useState(1);
+
+  const getRankBadge = (rank: number) => {
+    switch (rank) {
+      case 1:
+        return {
+          icon: "🥇",
+          label: "1st Place",
+          border: "border-amber-400/60 bg-gradient-to-r from-amber-500/10 via-card to-card shadow-amber-500/5",
+          badgeBg: "bg-amber-500 text-slate-950 font-black",
+          medalColor: "text-amber-500",
+        };
+      case 2:
+        return {
+          icon: "🥈",
+          label: "2nd Place",
+          border: "border-slate-300/60 dark:border-slate-600/60 bg-card",
+          badgeBg: "bg-slate-300 dark:bg-slate-600 text-foreground font-black",
+          medalColor: "text-slate-400",
+        };
+      case 3:
+        return {
+          icon: "🥉",
+          label: "3rd Place",
+          border: "border-amber-700/50 bg-card",
+          badgeBg: "bg-amber-700 text-white font-black",
+          medalColor: "text-amber-700",
+        };
+      default:
+        return {
+          icon: null,
+          label: `#${rank}`,
+          border: "border-border/60 bg-card",
+          badgeBg: "bg-muted text-foreground font-bold",
+          medalColor: "text-muted-foreground",
+        };
+    }
+  };
 
   const renderLeaderboard = (
     leaders: LeaderboardStudent[], 
     icon: React.ReactNode, 
     prizeInfo: string,
     currentRank: number,
-    currentPoints: number
+    currentPoints: number,
+    currentPage: number,
+    onPageChange: (page: number) => void
   ) => {
-    // Check if the current user is in the list
-    const isUserInList = leaders.some(s => s.isCurrentUser);
+    // If limit is provided (e.g. 5 for top 5), slice directly without pagination
+    const displayList = limit ? leaders.slice(0, limit) : leaders;
+    const isPaginated = !limit && leaders.length > ITEMS_PER_PAGE;
+
+    const totalPages = Math.max(1, Math.ceil(leaders.length / ITEMS_PER_PAGE));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const startIndex = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    const paginatedLeaders = isPaginated ? leaders.slice(startIndex, endIndex) : displayList;
+
+    const isUserInList = paginatedLeaders.some(s => s.isCurrentUser);
     const showUserPositionCard = showCurrentUserPosition && !isUserInList && currentRank > 0;
 
     const podium = leaders.filter((student) => student.rank <= 3).sort((a, b) => a.rank - b.rank);
@@ -94,7 +150,7 @@ export const CompetitionLeaderboards = ({
                 data-[state=active]:!bg-[#3a465d] data-[state=active]:!text-white hover:text-white focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none"
             >
               <Calendar size={16} />
-              Monthly
+              Monthly Top 5
             </TabsTrigger>
             <TabsTrigger 
               value="annual" 
@@ -103,27 +159,31 @@ export const CompetitionLeaderboards = ({
                 data-[state=active]:!bg-[#3a465d] data-[state=active]:!text-white hover:text-white focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none"
             >
               <Crown size={16} />
-              Annual
+              Annual Top 5
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="monthly" className="mt-0">
             {renderLeaderboard(
               monthlyLeaders,
-              <Trophy className="text-accent animate-bounce" size={20} />,
-              "Win ₦50,000 Cash Prize!",
+              <Trophy className="text-accent" size={20} />,
+              "Monthly Top Scholars • ₦50,000 Cash Prize",
               currentUserRanks.monthly,
-              currentUserPoints.monthly
+              currentUserPoints.monthly,
+              monthlyPage,
+              setMonthlyPage
             )}
           </TabsContent>
 
           <TabsContent value="annual" className="mt-0">
             {renderLeaderboard(
               annualLeaders,
-              <Crown className="text-accent animate-pulse" size={20} />,
-              "Grand Prize: ₦1,500,000 Cash!",
+              <Crown className="text-accent" size={20} />,
+              "Annual Grand Champions • ₦1,500,000 Grand Prize",
               currentUserRanks.annual,
-              currentUserPoints.annual
+              currentUserPoints.annual,
+              annualPage,
+              setAnnualPage
             )}
           </TabsContent>
         </Tabs>

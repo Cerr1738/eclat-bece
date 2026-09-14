@@ -60,13 +60,13 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
           setIsChecking(false);
           const pathname = window.location.pathname;
           if (pathname.includes("/parent")) {
-            navigate("/auth?role=parent");
+            navigate("/parent-login");
           } else if (pathname.includes("/school")) {
-            navigate("/auth?role=school");
+            navigate("/school-login");
           } else if (pathname.includes("/admin")) {
             navigate("/admin/login");
           } else {
-            navigate("/auth?role=student");
+            navigate("/student-login");
           }
         }
       }
@@ -82,11 +82,13 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
       if (!session?.user) {
         const pathname = window.location.pathname;
         if (pathname.includes("/parent")) {
-          navigate("/auth?role=parent");
+          navigate("/parent-login");
         } else if (pathname.includes("/school")) {
-          navigate("/auth?role=school");
+          navigate("/school-login");
+        } else if (pathname.includes("/admin")) {
+          navigate("/admin/login");
         } else {
-          navigate("/auth?role=student");
+          navigate("/student-login");
         }
         setIsAuthorized(false);
         return;
@@ -94,7 +96,12 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
 
       // Check if email is verified
       if (!session.user.email_confirmed_at) {
-        navigate("/verify-email");
+        const verifyParams = new URLSearchParams({
+          email: session.user.email || '',
+          user_id: session.user.id,
+          ...(requiredRole ? { role: requiredRole } : {}),
+        });
+        navigate(`/verify-email?${verifyParams.toString()}`);
         return;
       }
 
@@ -114,6 +121,7 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
           if (currentSession?.access_token) {
             await supabase.functions.invoke("provision-user", {
               headers: { Authorization: `Bearer ${currentSession.access_token}` },
+              body: { role: requiredRole },
             });
           }
 
@@ -125,7 +133,7 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
             .maybeSingle();
 
           if (!userRole) {
-            navigate("/role-selection");
+            navigate("/auth/login/role-selection");
             return;
           }
 
@@ -135,7 +143,7 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
             else if (userRole.role === "parent") navigate("/dashboard/parent");
             else if (userRole.role === "school") navigate("/dashboard/school");
             else if (userRole.role === "admin") navigate("/admin");
-            else navigate("/role-selection");
+            else navigate("/auth/login/role-selection");
             return;
           }
 
@@ -152,7 +160,7 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
             .maybeSingle();
 
           if (!studentData) {
-            navigate("/auth?role=student");
+            navigate("/student-login");
             return;
           }
         }
@@ -163,11 +171,13 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
       console.error("Auth check error:", error);
       const pathname = window.location.pathname;
       if (pathname.includes("/parent")) {
-        navigate("/auth?role=parent");
+        navigate("/parent-login");
       } else if (pathname.includes("/school")) {
-        navigate("/auth?role=school");
+        navigate("/school-login");
+      } else if (pathname.includes("/admin")) {
+        navigate("/admin/login");
       } else {
-        navigate("/auth?role=student");
+        navigate("/student-login");
       }
     } finally {
       setIsChecking(false);
