@@ -1,5 +1,5 @@
-import { Trophy, Calendar, Crown } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Trophy, Calendar, Crown, Clock, Medal } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export interface LeaderboardStudent {
@@ -46,121 +46,61 @@ export const CompetitionLeaderboards = ({
     const isUserInList = leaders.some(s => s.isCurrentUser);
     const showUserPositionCard = showCurrentUserPosition && !isUserInList && currentRank > 0;
 
+    const podium = leaders.filter((student) => student.rank <= 3).sort((a, b) => a.rank - b.rank);
+    const tableLeaders = leaders.filter((student) => student.rank > 3);
+    const userRow = showUserPositionCard
+      ? { rank: currentRank, name: `${currentUserName} (You)`, school: "Private Study", points: currentPoints, avatar: "👤", isCurrentUser: true }
+      : leaders.find((student) => student.isCurrentUser);
+
     return (
-      <div className="space-y-4">
-        {/* Prize Banner */}
-        <div className="text-center p-4 bg-accent/10 border border-accent/20 rounded-2xl">
-          <div className="flex items-center justify-center gap-2">
-            {icon}
-            <span className="font-black text-accent text-sm tracking-wide uppercase">{prizeInfo}</span>
+      <div className="space-y-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3 rounded-md border border-[#2b3a54] bg-[#111d32] px-4 py-3">
+            <span className="rounded-md bg-[#183149] p-2 text-[#71c9ed]">{icon}</span>
+            <div><p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Monthly prize</p><p className="text-sm font-semibold text-slate-100">{prizeInfo.replace("Win ", "").replace("!", "")}</p></div>
           </div>
+          <div className="flex items-center gap-2 rounded-md border border-[#2b3a54] bg-[#111d32] px-4 py-3 text-xs text-slate-300"><Clock size={15} className="text-slate-400" /><span>Ends in</span><strong>12d 05h 23m</strong></div>
         </div>
 
-        {/* Current User Rank Card (if not in top leaders) */}
-        {showUserPositionCard && (
-          <Card className="border-2 border-primary bg-primary/5 shadow-md rounded-2xl animate-fade-in">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-xl">
-                    👤
-                  </div>
-                  <div>
-                    <p className="font-black text-foreground">{currentUserName} (You)</p>
-                    <p className="text-xs font-semibold text-muted-foreground">
-                      Your current position • {currentPoints.toLocaleString()} pts
-                      {currentRank <= 10 && <span className="ml-2 font-black text-primary">• Top 10!</span>}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-3xl font-black text-primary">
-                    #{currentRank}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Leaders List */}
-        <div className="space-y-3">
-          {leaders.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              No students ranked yet. Be the first to quiz!
-            </div>
-          ) : (
-            leaders.map((student, index) => (
-              <Card
-                key={index}
-                className={`border-2 rounded-2xl transition-all duration-300 hover:shadow-md hover:border-primary/30 ${
-                  student.isCurrentUser 
-                    ? "border-primary bg-primary/5" 
-                    : student.rank <= 3 
-                    ? "border-accent/30 bg-card" 
-                    : "border-border/50 bg-card"
-                }`}
-              >
-                <CardContent className="p-3 sm:p-4">
-                  <div className="flex items-center gap-3">
-                    {/* Avatar with rank badge */}
-                    <div className="relative flex-shrink-0">
-                      <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-2xl border border-primary/20">
-                        <span>{student.avatar}</span>
-                      </div>
-                      <div className={`absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center shadow-sm ${
-                        student.rank <= 3 ? "bg-accent text-white" : "bg-primary text-white"
-                      }`}>
-                        <span className="text-[10px] font-black">#{student.rank}</span>
-                      </div>
-                    </div>
-
-                    {/* Student Info */}
-                    <div className="flex-1 min-w-0">
-                      <h4 className={`text-sm sm:text-base text-foreground truncate ${student.rank <= 10 ? 'font-black' : 'font-bold'}`}>
-                        {student.name}
-                      </h4>
-                      <p className="text-xs sm:text-sm font-semibold text-muted-foreground truncate">
-                        {student.school}
-                      </p>
-                    </div>
-
-                    {/* Points */}
-                    <div className="text-right flex-shrink-0">
-                      <div className="text-lg sm:text-xl font-black text-primary leading-tight">
-                        {student.points.toLocaleString()}
-                      </div>
-                      <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">pts</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+        {leaders.length === 0 ? <div className="border border-dashed border-[#2b3a54] bg-[#0e192b] py-12 text-center text-sm text-slate-400">No students ranked yet. Be the first to quiz!</div> : <>
+          <div className="grid min-h-[205px] grid-cols-3 items-end gap-2 rounded-lg border border-[#2b3a54] bg-[#0e192b] px-3 pb-5 pt-8 sm:gap-6 sm:px-12">
+            {[2, 1, 3].map((rank) => {
+              const student = podium.find((item) => item.rank === rank);
+              if (!student) return <div key={rank} />;
+              const winner = rank === 1;
+              return <div key={student.rank} className={`relative flex flex-col items-center justify-end rounded-t-lg border px-2 pb-4 pt-7 ${winner ? 'h-40 border-[#f4d21f] bg-[#202b40]' : 'h-28 border-[#43506a] bg-[#182338]'}`}><span className={`absolute -top-3 flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${winner ? 'bg-[#f4d21f] text-[#071023]' : 'border border-slate-300 bg-[#273349] text-white'}`}>{rank}</span><span className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-[#091426] text-xl">{student.avatar}</span><p className="max-w-full truncate text-center text-xs font-semibold text-white">{student.name}{student.isCurrentUser ? ' (You)' : ''}</p><p className={`mt-1 text-[10px] font-bold ${winner ? 'text-[#f4d21f]' : 'text-slate-400'}`}>{student.points.toLocaleString()} pts</p></div>;
+            })}
+          </div>
+          <div className="overflow-hidden rounded-lg border border-[#1d2a40] bg-[#0e192b]">
+            <div className="grid grid-cols-[52px_1fr_1fr_72px] border-b border-[#2b3a54] px-4 py-3 text-[9px] uppercase tracking-wider text-slate-500 sm:grid-cols-[60px_1fr_1fr_90px]"><span>Rank</span><span>Student</span><span>School</span><span className="text-right">Points</span></div>
+            {tableLeaders.map((student) => <div key={`${student.rank}-${student.name}`} className="grid grid-cols-[52px_1fr_1fr_72px] items-center border-b border-[#17243a] px-4 py-3 text-xs transition hover:bg-[#13223a] sm:grid-cols-[60px_1fr_1fr_90px]"><span className="text-slate-400">{student.rank}</span><span className="flex min-w-0 items-center gap-2 font-medium text-slate-100"><span className="text-base">{student.avatar}</span><span className="truncate">{student.name}</span></span><span className="truncate text-slate-400">{student.school}</span><strong className="text-right text-slate-100">{student.points.toLocaleString()}</strong></div>)}
+          </div>
+          {userRow && !leaders.some((student) => student.isCurrentUser) && <div className="grid grid-cols-[52px_1fr_1fr_72px] items-center rounded-md border border-[#0c9dcc] bg-[#1d2b42] px-4 py-3 text-xs sm:grid-cols-[60px_1fr_1fr_90px]"><span className="text-slate-300">{userRow.rank}</span><span className="flex items-center gap-2 font-semibold text-white"><span>{userRow.avatar}</span>{userRow.name}</span><span className="text-slate-400">{userRow.school}</span><strong className="text-right text-[#0c9dcc]">{userRow.points.toLocaleString()}</strong></div>}
+          <div className="flex items-center gap-2 border-t border-[#2b3a54] pt-3 text-xs text-slate-400"><Medal size={15} className="text-[#f4d21f]" />Keep it up! You&apos;re doing amazing!</div>
+        </>}
       </div>
     );
   };
 
   return (
-    <Card className="border-2 border-border/50 bg-background/50 backdrop-blur-sm shadow-sm rounded-[2rem] overflow-hidden">
+    <Card className="overflow-hidden rounded-lg border border-[#2b3a54] bg-transparent shadow-none">
       <CardContent className="pt-6">
         <Tabs defaultValue="monthly" className="w-full flex flex-col">
-          <TabsList className="flex w-fit mx-auto gap-2 rounded-full p-1.5 bg-muted/40 border border-border/40 backdrop-blur-sm mb-8">
+          <TabsList className="mx-0 mb-6 flex w-fit gap-1 rounded-md border border-[#2b3a54] bg-[#111d32] p-1">
             <TabsTrigger 
               value="monthly" 
-              className="rounded-full font-black gap-2 px-8 py-3 text-sm transition-all duration-300
+              className="gap-2 rounded px-8 py-2 text-sm text-slate-400 transition-all duration-300
                 data-[state=active]:!bg-gradient-to-r data-[state=active]:!from-primary data-[state=active]:!to-primary-glow data-[state=active]:!text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20
-                hover:text-foreground/80 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none"
+                data-[state=active]:!bg-[#3a465d] data-[state=active]:!text-white hover:text-white focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none"
             >
               <Calendar size={16} />
               Monthly
             </TabsTrigger>
             <TabsTrigger 
               value="annual" 
-              className="rounded-full font-black gap-2 px-8 py-3 text-sm transition-all duration-300
+              className="gap-2 rounded px-8 py-2 text-sm text-slate-400 transition-all duration-300
                 data-[state=active]:!bg-gradient-to-r data-[state=active]:!from-primary data-[state=active]:!to-primary-glow data-[state=active]:!text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20
-                hover:text-foreground/80 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none"
+                data-[state=active]:!bg-[#3a465d] data-[state=active]:!text-white hover:text-white focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none"
             >
               <Crown size={16} />
               Annual

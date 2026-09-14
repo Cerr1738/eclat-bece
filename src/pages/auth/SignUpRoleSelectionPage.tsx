@@ -1,94 +1,73 @@
 import { useNavigate } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, Users, School } from "lucide-react";
+import { ArrowRight, ArrowLeft, Building2, GraduationCap, Users } from "lucide-react";
+import eclatlLogo from "@/assets/logo.png";
 
-export default function SignUpRoleSelectionPage() {
+export default function SignUpRoleSelectionPage({ login = false }: { login?: boolean }) {
   const navigate = useNavigate();
 
   const roles = [
     {
+      id: "student",
+      icon: GraduationCap,
+      title: "Student",
+      description: "Access your courses, track your progress, and collaborate with peers.",
+    },
+    {
       id: "parent",
       icon: Users,
       title: "Parent",
-      description: "Monitor your child's learning journey",
-      color: "from-purple-500 to-pink-500",
+      description: "Monitor academic performance, communicate with teachers, and manage schedules.",
     },
     {
       id: "school",
-      icon: School,
+      icon: Building2,
       title: "School",
-      description: "Manage students and view analytics",
-      color: "from-green-500 to-emerald-500",
+      description: "Manage faculty, oversee curriculum delivery, and analyze institutional data.",
     },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-light/20 via-background to-accent-light/20 flex items-center justify-center p-4">
-      <div className="w-full max-w-4xl">
-        <div className="text-center mb-8 animate-fade-in">
-          <div className="inline-flex items-center gap-2 mb-4">
-            <BookOpen className="text-primary" size={40} />
-            <h1 className="text-4xl font-bold text-foreground">Éclat</h1>
-          </div>
-          <p className="text-xl text-muted-foreground">Select your role to sign up</p>
-        </div>
-
-        <div className="flex flex-col md:flex-row items-center justify-between gap-8">
-          {/* Parent Card (Left) */}
-          <Card
-            className="cursor-pointer hover:shadow-xl transition-all duration-300 hover:scale-105 border-2 animate-scale-in group w-full md:w-80"
-            style={{ animationDelay: '0ms' }}
-            onClick={() => navigate(`/auth?role=parent`)}
-          >
-            <CardHeader className="text-center">
-              <div className="mx-auto mb-4 p-4 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 w-fit group-hover:scale-110 transition-transform">
-                <Users className="text-white" size={32} />
-              </div>
-              <CardTitle className="text-xl">Parent</CardTitle>
-              <CardDescription>Monitor your child's learning journey</CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <p className="text-sm text-primary font-medium">Click to continue →</p>
-            </CardContent>
-          </Card>
-
-          {/* Middle Section */}
-          <div className="flex flex-col items-center gap-4 text-center animate-fade-in" style={{ animationDelay: '100ms' }}>
-            <div className="text-6xl font-black text-primary/20">OR</div>
-            <div className="space-y-2">
-              <h3 className="text-lg font-bold text-foreground">Choose Your Path</h3>
-              <p className="text-muted-foreground text-sm">Sign up to get started with Éclat</p>
-            </div>
+    <main className="flex min-h-screen items-center justify-center bg-[#081328] p-0 font-sans text-[#dce7ff]">
+      <section className="relative flex min-h-screen w-full flex-col overflow-hidden bg-[#081328]">
+        <div className="flex flex-1 flex-col items-center px-6 pb-10 pt-14 sm:px-12 sm:pt-20 lg:px-[92px] lg:pt-[82px]">
+          <div className="animate-fade-in text-center">
+            <img src={eclatlLogo} alt="Eclat Logo" className="h-20 w-auto mx-auto mb-6" />
+            <h2 className="mt-6 text-[32px] font-bold leading-none text-[#dce3fa]">Select Your Role</h2>
+            <p className="mx-auto mt-3 max-w-[430px] text-[16px] leading-[1.45] text-[#bbc5d9]">
+              Choose how you want to interact with the platform to get started.
+            </p>
           </div>
 
-          {/* School Card (Right) */}
-          <Card
-            className="cursor-pointer hover:shadow-xl transition-all duration-300 hover:scale-105 border-2 animate-scale-in group w-full md:w-80"
-            style={{ animationDelay: '200ms' }}
-            onClick={() => navigate(`/auth?role=school`)}
-          >
-            <CardHeader className="text-center">
-              <div className="mx-auto mb-4 p-4 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 w-fit group-hover:scale-110 transition-transform">
-                <School className="text-white" size={32} />
-              </div>
-              <CardTitle className="text-xl">School</CardTitle>
-              <CardDescription>Manage students and view analytics</CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <p className="text-sm text-primary font-medium">Click to continue →</p>
-            </CardContent>
-          </Card>
-        </div>
+          <div className="mt-[84px] grid w-full max-w-[905px] grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-6">
+            {roles.map(({ id, icon: Icon, title, description }, index) => (
+              <button
+                key={id}
+                type="button"
+                className="group flex min-h-[290px] flex-col items-start border border-[#1d2c47] bg-[#121e34] px-7 py-7 text-left transition duration-200 hover:-translate-y-1 hover:border-[#43718e] hover:bg-[#172640] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#72c8f6] animate-scale-in"
+                style={{ animationDelay: `${index * 100}ms` }}
+                onClick={() => navigate(login ? `/${id === "student" ? "student-login" : `${id}-login`}` : id === "student" ? "/student-signup" : id === "parent" ? "/parent-signup" : `/auth?role=${id}`)}
+              >
+                <span className="flex h-[57px] w-[57px] items-center justify-center rounded-[11px] bg-[#1c2b45] text-[#72c8f6] transition-transform group-hover:scale-105">
+                  <Icon size={31} strokeWidth={2.2} />
+                </span>
+                <span className="mt-7 text-[20px] font-bold text-[#dce3fa]">{title}</span>
+                <span className="mt-3 text-[15px] leading-[1.45] text-[#bdc8db]">{description}</span>
+                <span className="mt-auto flex items-center gap-3 pt-6 text-[13px] font-bold uppercase tracking-[1px] text-[#65b9e5]">
+                  Click to continue <ArrowRight size={18} strokeWidth={2.5} />
+                </span>
+              </button>
+            ))}
+          </div>
 
-        <div className="text-center mt-8">
           <button
+            type="button"
             onClick={() => navigate("/")}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="mt-auto flex items-center gap-3 pt-14 text-[14px] font-medium text-[#c4cede] transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#72c8f6]"
           >
-            ← Back to Home
+            <ArrowLeft size={18} /> Back to Home
           </button>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
