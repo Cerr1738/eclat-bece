@@ -8,6 +8,7 @@ import { BookOpen, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { getSafeErrorMessage } from "@/lib/errorUtils";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function EmailVerificationPage() {
   const navigate = useNavigate();
@@ -123,7 +124,10 @@ export default function EmailVerificationPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-light/20 via-background to-accent-light/20 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-primary-light/20 via-background to-accent-light/20 flex items-center justify-center p-4 relative">
+      <div className="absolute right-4 top-4 z-50">
+        <ThemeToggle />
+      </div>
       <div className="w-full max-w-md">
         <div className="text-center mb-8 animate-fade-in">
           <div className="inline-flex items-center gap-2 mb-2">

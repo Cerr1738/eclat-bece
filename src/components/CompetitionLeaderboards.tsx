@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Trophy, Calendar, Crown, Clock, Medal } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -82,8 +82,8 @@ export const CompetitionLeaderboards = ({
   };
 
   const renderLeaderboard = (
-    leaders: LeaderboardStudent[], 
-    icon: React.ReactNode, 
+    leaders: LeaderboardStudent[],
+    icon: ReactNode,
     prizeInfo: string,
     currentRank: number,
     currentPoints: number,
@@ -127,19 +127,17 @@ export const CompetitionLeaderboards = ({
               const winner = rank === 1;
               const isSecond = rank === 2;
               return (
-                <div 
-                  key={student.rank} 
-                  className={`relative flex flex-col items-center justify-end rounded-t-lg border px-2 pb-3.5 pt-5 transition-all ${
-                    winner 
-                      ? 'h-48 sm:h-52 border-[#f4d21f] bg-[#202b40] shadow-lg shadow-amber-500/10' 
+                <div
+                  key={student.rank}
+                  className={`relative flex flex-col items-center justify-end rounded-t-lg border px-2 pb-3.5 pt-5 transition-all ${winner
+                      ? 'h-48 sm:h-52 border-[#f4d21f] bg-[#202b40] shadow-lg shadow-amber-500/10'
                       : isSecond
                         ? 'h-40 sm:h-44 border-[#43506a] bg-[#182338]'
                         : 'h-[136px] sm:h-[150px] border-[#43506a] bg-[#182338]'
-                  }`}
+                    }`}
                 >
-                  <span className={`absolute -top-3.5 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold shadow-sm ${
-                    winner ? 'bg-[#f4d21f] text-[#071023] ring-2 ring-[#f4d21f]/30' : 'border border-slate-300 bg-[#273349] text-white'
-                  }`}>
+                  <span className={`absolute -top-3.5 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold shadow-sm ${winner ? 'bg-[#f4d21f] text-[#071023] ring-2 ring-[#f4d21f]/30' : 'border border-slate-300 bg-[#273349] text-white'
+                    }`}>
                     {rank}
                   </span>
                   <span className="mb-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#091426] text-xl shadow-inner">
@@ -171,8 +169,8 @@ export const CompetitionLeaderboards = ({
       <CardContent className="pt-6">
         <Tabs defaultValue="monthly" className="w-full flex flex-col">
           <TabsList className="mx-0 mb-6 flex w-fit gap-1 rounded-md border border-[#2b3a54] bg-[#111d32] p-1">
-            <TabsTrigger 
-              value="monthly" 
+            <TabsTrigger
+              value="monthly"
               className="gap-2 rounded px-8 py-2 text-sm text-slate-400 transition-all duration-300
                 data-[state=active]:!bg-gradient-to-r data-[state=active]:!from-primary data-[state=active]:!to-primary-glow data-[state=active]:!text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20
                 data-[state=active]:!bg-[#3a465d] data-[state=active]:!text-white hover:text-white focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none"
@@ -180,8 +178,8 @@ export const CompetitionLeaderboards = ({
               <Calendar size={16} />
               Monthly Top 5
             </TabsTrigger>
-            <TabsTrigger 
-              value="annual" 
+            <TabsTrigger
+              value="annual"
               className="gap-2 rounded px-8 py-2 text-sm text-slate-400 transition-all duration-300
                 data-[state=active]:!bg-gradient-to-r data-[state=active]:!from-primary data-[state=active]:!to-primary-glow data-[state=active]:!text-primary-foreground data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20
                 data-[state=active]:!bg-[#3a465d] data-[state=active]:!text-white hover:text-white focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none"

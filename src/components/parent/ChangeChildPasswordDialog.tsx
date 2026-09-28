@@ -67,20 +67,20 @@ export function ChangeChildPasswordDialog({ open, onOpenChange, child }: ChangeC
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[425px] rounded-[2rem] border-2 shadow-2xl">
+            <DialogContent className="sm:max-w-[425px] rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100 shadow-2xl">
                 <DialogHeader>
-                    <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center mb-2">
-                        <Key className="w-6 h-6 text-amber-600" />
+                    <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center mb-2">
+                        <Key className="w-5 h-5 text-amber-400" />
                     </div>
-                    <DialogTitle className="text-2xl font-black tracking-tight">Change Password</DialogTitle>
-                    <DialogDescription className="font-medium text-muted-foreground">
-                        Set a new password for <span className="text-foreground font-bold">{child?.profile.full_name}</span>.
+                    <DialogTitle className="text-xl font-bold text-white">Change Password</DialogTitle>
+                    <DialogDescription className="font-medium text-slate-400 text-xs sm:text-sm">
+                        Set a new password for <span className="text-white font-semibold">{child?.profile.full_name}</span>.
                     </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-6 py-4">
+                <form onSubmit={handleSubmit} className="space-y-5 py-2">
                     <div className="space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="newPassword" className="text-sm font-bold uppercase tracking-widest text-muted-foreground/70">
+                            <Label htmlFor="newPassword" className="text-xs font-semibold uppercase tracking-wider text-slate-300">
                                 New Password
                             </Label>
                             <div className="relative group">
@@ -90,20 +90,20 @@ export function ChangeChildPasswordDialog({ open, onOpenChange, child }: ChangeC
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     placeholder="Minimum 6 characters"
-                                    className="h-12 rounded-xl border-2 font-medium focus:border-amber-500/50 pr-12 transition-all"
+                                    className="h-11 rounded-xl border border-[#233148] bg-[#080f22] text-slate-100 placeholder:text-slate-500 font-medium focus-visible:border-amber-400 pr-12 transition-all"
                                     required
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
                                 >
-                                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="confirmPassword" className="text-sm font-bold uppercase tracking-widest text-muted-foreground/70">
+                            <Label htmlFor="confirmPassword" className="text-xs font-semibold uppercase tracking-wider text-slate-300">
                                 Confirm Password
                             </Label>
                             <Input
@@ -112,29 +112,28 @@ export function ChangeChildPasswordDialog({ open, onOpenChange, child }: ChangeC
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
                                 placeholder="Repeat new password"
-                                className="h-12 rounded-xl border-2 font-medium focus:border-amber-500/50"
+                                className="h-11 rounded-xl border border-[#233148] bg-[#080f22] text-slate-100 placeholder:text-slate-500 font-medium focus-visible:border-amber-400"
                                 required
                             />
                         </div>
                     </div>
-                    <DialogFooter className="pt-2">
+                    <DialogFooter className="pt-2 flex gap-2">
                         <Button
                             type="button"
                             variant="outline"
                             onClick={() => onOpenChange(false)}
-                            className="rounded-xl font-bold border-2 h-12 px-6"
+                            className="rounded-xl font-semibold border border-[#233148] bg-[#080f22] text-slate-200 hover:bg-[#15273f] hover:border-[#3bc2f3] hover:text-white h-11 px-5"
                         >
                             Cancel
                         </Button>
                         <Button
                             type="submit"
-                            variant="hero"
                             disabled={isSubmitting || !password || password !== confirmPassword}
-                            className="rounded-xl font-black h-12 px-8 bg-amber-600 hover:bg-amber-700 shadow-lg shadow-amber-600/20"
+                            className="rounded-xl font-bold h-11 px-6 bg-amber-500 text-slate-950 hover:bg-amber-400 shadow-md shadow-amber-500/10"
                         >
                             {isSubmitting ? (
                                 <>
-                                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                     Resetting...
                                 </>
                             ) : (

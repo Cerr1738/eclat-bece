@@ -270,7 +270,7 @@ export default function StudentDashboard() {
               <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => navigate("/dashboard/student/settings")}>
                 <Settings size={20} />
               </Button>
-              <Button variant="ghost" size="icon" className="h-10 w-10" onClick={signOut}>
+              <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => signOut()}>
                 <LogOut size={20} />
               </Button>
             </div>
@@ -290,7 +290,7 @@ export default function StudentDashboard() {
                     Settings
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={signOut}>
+                  <DropdownMenuItem onClick={() => signOut()}>
                     <LogOut className="mr-2 h-4 w-4" />
                     Sign Out
                   </DropdownMenuItem>

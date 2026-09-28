@@ -92,6 +92,15 @@ export default function MyChildren() {
 
             if (error) throw error;
             if (data) {
+                setChildren((prev) =>
+                    prev.map((c) =>
+                        c.id === studentId ? { ...c, assignments: data as Assignment[] } : c
+                    )
+                );
+
+                const pending = data.filter((a) => a.status === "pending").length;
+                const completed = data.filter((a) => a.status === "completed").length;
+
                 setChildrenAnalytics((prev) => {
                     const current = prev.get(studentId) || {
                         studentId,
@@ -102,8 +111,6 @@ export default function MyChildren() {
                         pendingAssignments: 0,
                         completedAssignments: 0,
                     };
-                    const pending = data.filter((a) => a.status === "pending").length;
-                    const completed = data.filter((a) => a.status === "completed").length;
                     return new Map(prev).set(studentId, {
                         ...current,
                         pendingAssignments: pending,
@@ -191,65 +198,64 @@ export default function MyChildren() {
     );
 
     return (
-        <div className="p-6 space-y-8 animate-fade-in max-w-7xl mx-auto">
+        <div className="w-full space-y-6 sm:space-y-8 animate-fade-in">
             {/* Header Section */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2 border-b border-border/40">
-                <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-primary font-bold uppercase tracking-wider text-xs">
-                        <Users className="h-4 w-4" />
-                        <span>Student Management</span>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <div className="inline-flex items-center gap-1.5 rounded-full border border-[#2d4b68] bg-[#0c2438] px-3 py-1 text-[11px] font-semibold text-[#58c4e8]">
+                        <Users className="h-3.5 w-3.5" />
+                        <span>Learner Management</span>
                     </div>
-                    <h1 className="text-4xl font-black tracking-tight text-foreground">
-                        My <span className="text-primary italic">Children</span>.
+                    <h1 className="mt-2 text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-[#71c9ed]">
+                        My Children<span className="text-[#3bc2f3]">.</span>
                     </h1>
-                    <p className="text-muted-foreground font-medium max-w-md">
-                        Manage your children's accounts, track individual progress, and assign dedicated practice.
+                    <p className="mt-1 text-xs sm:text-sm text-slate-400">
+                        Manage student profiles, view comprehensive exam stats, and assign practice.
                     </p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
                     <Button
                         onClick={() => navigate("/dashboard/parent")}
                         variant="outline"
-                        className="rounded-2xl border-2 font-bold h-12 shadow-sm hover:bg-muted"
+                        className="border-slate-700 bg-slate-900/60 text-slate-200 hover:bg-slate-800 text-xs sm:text-sm"
                     >
-                        <LayoutDashboard className="mr-2 h-5 w-5" />
+                        <LayoutDashboard className="mr-1.5 h-4 w-4" />
                         Dashboard
                     </Button>
                     <Button
                         onClick={() => setAddChildOpen(true)}
-                        variant="hero"
-                        className="rounded-2xl font-black h-12 shadow-xl shadow-primary/20 px-6"
+                        className="bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff] font-semibold text-xs sm:text-sm"
                     >
-                        <Plus className="mr-2 h-6 w-6" />
+                        <Plus className="mr-1.5 h-4 w-4" />
                         Add New Child
                     </Button>
                 </div>
             </div>
 
-            {/* Metrics Overivew */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card className="rounded-[2rem] border-2 border-primary/10 bg-primary/5 p-6 space-y-2">
-                    <p className="text-xs font-black uppercase tracking-widest text-primary/60">Total Students</p>
-                    <div className="flex items-baseline gap-2">
-                        <p className="text-4xl font-black text-primary">{children.length}</p>
-                        <p className="text-sm font-bold text-primary/40">Active</p>
+            {/* Metrics Overview */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                <Card className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100 p-4 sm:p-5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Enrolled Children</p>
+                    <div className="flex items-baseline gap-2 mt-1">
+                        <p className="text-2xl sm:text-3xl font-black text-white">{children.length}</p>
+                        <p className="text-xs text-[#58c4e8]">Active</p>
                     </div>
                 </Card>
-                <Card className="rounded-[2rem] border-2 border-amber-500/10 bg-amber-500/5 p-6 space-y-2">
-                    <p className="text-xs font-black uppercase tracking-widest text-amber-600/60">Premium Access</p>
-                    <div className="flex items-baseline gap-2">
-                        <p className="text-4xl font-black text-amber-600">{children.filter(c => c.is_premium).length}</p>
-                        <p className="text-sm font-bold text-amber-600/40">Students</p>
+                <Card className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100 p-4 sm:p-5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Premium Access</p>
+                    <div className="flex items-baseline gap-2 mt-1">
+                        <p className="text-2xl sm:text-3xl font-black text-amber-400">{children.filter(c => c.is_premium).length}</p>
+                        <p className="text-xs text-amber-400/70">VIP</p>
                     </div>
                 </Card>
             </div>
 
             {/* Search and Filters */}
-            <div className="relative group max-w-md">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+            <div className="relative max-w-md">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                     placeholder="Search by name or username..."
-                    className="pl-12 h-14 rounded-2xl border-2 focus:border-primary/50 text-base font-medium shadow-sm"
+                    className="pl-10 h-10 rounded-xl border border-[#26344d] bg-[#0d162a] text-xs sm:text-sm text-slate-200 placeholder:text-slate-400 focus:border-[#3bc2f3]/60 focus:ring-1 focus:ring-[#3bc2f3]/20"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -257,8 +263,8 @@ export default function MyChildren() {
 
             {/* Children Grid */}
             {isLoading ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {[1, 2].map(i => <div key={i} className="h-64 rounded-[2.5rem] bg-muted animate-pulse border-2 border-border/50" />)}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                    {[1, 2].map(i => <div key={i} className="h-64 rounded-2xl bg-[#0c1628] animate-pulse border border-[#233148]" />)}
                 </div>
             ) : filteredChildren.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-20">
@@ -306,7 +312,7 @@ export default function MyChildren() {
                         <Users className="h-12 w-12 text-muted-foreground/30" />
                     </div>
                     <div className="space-y-2">
-                        <h2 className="text-2xl font-black tracking-tight">No students found</h2>
+                        <h2 className="text-2xl font-black tracking-tight text-[#71c9ed]">No students found</h2>
                         <p className="text-muted-foreground font-medium max-w-xs mx-auto text-lg leading-relaxed">
                             {searchQuery ? "Try a different search term or clear the filter." : "Start by adding your first child to track their progress."}
                         </p>

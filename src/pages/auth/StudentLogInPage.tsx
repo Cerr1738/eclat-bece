@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Loader2, Eye, EyeOff, ArrowLeft, ArrowRight, LockKeyhole, UserRound } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useRedirectIfAuthenticated } from "@/hooks/useRedirectIfAuthenticated";
 import { z } from "zod";
 import { getSafeErrorMessage } from "@/lib/errorUtils";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -94,9 +95,12 @@ export default function StudentLogInPage() {
         </div>
 
         <section className="mt-8 w-full max-w-[330px] animate-scale-in border border-slate-300 bg-white px-6 pb-6 pt-5 shadow-[0_10px_28px_rgba(15,23,42,0.12)] dark:border-[#2a3a53] dark:bg-[#1b283d] dark:shadow-[0_10px_28px_rgba(0,0,0,0.22)]">
-          <div className="mb-5 grid grid-cols-2 text-center text-[12px] font-bold tracking-[1px]">
-            <button type="button" className="border-b-2 border-sky-600 pb-3 text-sky-600 dark:border-[#72c8f6] dark:text-[#72c8f6]">Login</button>
-            <button type="button" onClick={() => navigate("/student-signup")} className="border-b border-slate-300 pb-3 text-slate-500 transition-colors hover:text-slate-900 dark:border-[#3a485c] dark:text-[#b6c0d1] dark:hover:text-white">Sign Up</button>
+          <div className="mb-5 text-center text-[12px] font-bold tracking-[1px] text-sky-600 dark:text-[#72c8f6]">
+            Student Login
+          </div>
+
+          <div className="mb-4 rounded-md border border-sky-100 bg-sky-50 px-3 py-2 text-[11px] text-slate-700 dark:border-sky-900/60 dark:bg-sky-950/20 dark:text-sky-100">
+            Student profiles are created by parents or schools.
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">

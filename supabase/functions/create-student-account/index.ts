@@ -42,15 +42,19 @@ serve(async (req) => {
 
     const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    const { data: parentRecord, error: parentError } = await adminClient
+    const { data: parentRecord } = await adminClient
       .from("parents")
       .select("id")
       .eq("user_id", userData.user.id)
-      .single();
+      .maybeSingle();
 
-    if (parentError || !parentRecord) {
-      return json({ error: "Only parents can create student accounts" }, 403);
-    }
+    const { data: schoolRecord } = await adminClient
+      .from("schools")
+      .select("id")
+      .eq("user_id", userData.user.id)
+      .maybeSingle();
+
+    if (!parentRecord && !schoolRecord) return json({ error: "Only parents or schools can create student accounts" }, 403);
 
     const { fullName, classYear, username, password } = await req.json();
     const cleanFullName = typeof fullName === "string" ? fullName.trim() : "";
@@ -103,12 +107,12 @@ serve(async (req) => {
       user_metadata: {
         role: "student",
         full_name: cleanFullName,
-        provisioned_by: "parent",
+        provisioned_by: parentRecord ? "parent" : "school",
       },
       app_metadata: {
         role: "student",
-        provisioned_by: "parent",
-        parent_id: parentRecord.id,
+        provisioned_by: parentRecord ? "parent" : "school",
+        ...(parentRecord ? { parent_id: parentRecord.id } : { school_id: schoolRecord.id }),
       },
     });
 
@@ -152,7 +156,8 @@ serve(async (req) => {
       .from("students")
       .insert({
         user_id: newUserId,
-        parent_id: parentRecord.id,
+        parent_id: parentRecord?.id || null,
+        school_id: schoolRecord?.id || null,
         class_year: cleanClassYear,
         onboarding_completed: true,
         is_premium: false,

@@ -396,7 +396,7 @@ export default function SchoolDashboard() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={signOut}
+              onClick={() => signOut()}
               className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 font-bold"
             >
               <LogOut size={16} />
@@ -407,13 +407,13 @@ export default function SchoolDashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="w-full px-4 py-8">
         {!selectedCohort ? (
           <>
             {/* School Greeting & Subtitle */}
             <div className="mb-6 animate-fade-in flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h1 className="text-3xl sm:text-4xl font-black text-foreground tracking-tight">
+                <h1 className="text-3xl sm:text-4xl font-black text-[#71c9ed] tracking-tight">
                   {school?.school_name || "School Dashboard"}
                 </h1>
                 <p className="text-muted-foreground mt-1 text-sm sm:text-base">
@@ -527,7 +527,7 @@ export default function SchoolDashboard() {
               <div className="lg:col-span-2 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-xl font-black text-foreground flex items-center gap-2">
+                    <h3 className="text-xl font-black text-[#71c9ed] flex items-center gap-2">
                       <BookOpen className="h-5 w-5 text-primary" />
                       Academic Class Cohorts
                     </h3>
@@ -699,7 +699,7 @@ export default function SchoolDashboard() {
             {/* School-Wide Competition Leaderboards */}
             <div className="mt-10 animate-fade-in">
               <div className="mb-4">
-                <h3 className="text-2xl font-black text-foreground">National Competition Standings</h3>
+                <h3 className="text-2xl font-black text-[#71c9ed]">National Competition Standings</h3>
                 <p className="text-muted-foreground text-sm">
                   View how your students rank in national monthly and annual scholarship competitions
                 </p>
@@ -723,7 +723,7 @@ export default function SchoolDashboard() {
 
             <div className="mb-8 animate-fade-in flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-3xl font-black text-foreground mb-1">{currentSelectedName}</h2>
+                <h2 className="text-3xl font-black text-[#71c9ed] mb-1">{currentSelectedName}</h2>
                 <p className="text-muted-foreground text-sm">
                   Manage enrolled students, assign targeted practice, and view detailed progress reports
                 </p>
@@ -794,7 +794,7 @@ export default function SchoolDashboard() {
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <h4 className="font-bold text-base text-foreground">{student.name}</h4>
+                              <h4 className="font-bold text-base text-[#71c9ed]">{student.name}</h4>
                               {student.is_premium && (
                                 <Badge className="bg-gradient-hero text-[10px] py-0">PRO</Badge>
                               )}

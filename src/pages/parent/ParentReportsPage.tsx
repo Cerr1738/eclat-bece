@@ -1,159 +1,250 @@
-import { ArrowDownToLine, BarChart3, CheckCircle2, ChevronDown, CircleAlert, Download, Search } from "lucide-react";
+import { useState } from "react";
+import { ArrowDownToLine, BarChart3, CheckCircle2, ChevronDown, CircleAlert, Download, Search, Sparkles, TrendingUp, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 
 const subjectScores = [
   { subject: "Mathematics", value: 92, delta: "Class Avg: 78%" },
-  { subject: "English Lit", value: 85, delta: "Class Avg: 81%" },
-  { subject: "Science (Basic)", value: 76, delta: "Class Avg: 82%" },
-  { subject: "History", value: 88, delta: "Class Avg: 75%" },
+  { subject: "English Language", value: 85, delta: "Class Avg: 81%" },
+  { subject: "Basic Science", value: 76, delta: "Class Avg: 82%" },
+  { subject: "Social Studies", value: 88, delta: "Class Avg: 75%" },
 ];
 
 const sparkLine = [68, 72, 76, 80, 79, 83, 86, 90, 88, 92];
 
 export default function ParentReportsPage() {
+  const [termFilter, setTermFilter] = useState("term1");
+
+  const handleExportPDF = () => {
+    toast.success("Generating report card PDF...", {
+      description: "Your report download will begin in a moment.",
+    });
+  };
+
   return (
-    <div className="w-full px-3 pb-20 pt-6 md:px-6">
-      <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+    <div className="w-full space-y-6 sm:space-y-8 animate-fade-in">
+      {/* Header Section */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="parent-section-chip">Academic Service</div>
-          <h1 className="mt-4 text-4xl font-black tracking-tight text-foreground md:text-5xl">Performance Reports</h1>
-          <p className="mt-2 text-base text-muted-foreground">Detailed insights and progress tracking for Ore Alle (Year 9).</p>
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-[#2d4b68] bg-[#0c2438] px-3 py-1 text-[11px] font-semibold text-[#58c4e8]">
+            <BarChart3 className="h-3.5 w-3.5" />
+            <span>Academic Performance</span>
+          </div>
+          <h1 className="mt-2 text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-[#71c9ed]">
+            Performance Reports<span className="text-[#3bc2f3]">.</span>
+          </h1>
+          <p className="mt-1 text-xs sm:text-sm text-slate-400">
+            Comprehensive diagnostic scores, syllabus milestones, and mock exam progress.
+          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[220px]">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Search reports..." className="parent-search h-12 bg-background/40 pl-10" />
-          </div>
-          <Button variant="outline" className="h-12 rounded-xl border border-border/60 bg-background/30 px-4 text-sm font-semibold">This Term</Button>
-          <Button className="h-12 rounded-xl bg-primary px-4 text-sm font-black text-primary-foreground">Export PDF</Button>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <select
+            aria-label="Filter reports by term"
+            value={termFilter}
+            onChange={(e) => setTermFilter(e.target.value)}
+            className="h-9 sm:h-10 rounded-xl border border-[#26344d] bg-[#0d162a] px-3 text-xs sm:text-sm text-slate-300 focus:outline-none focus:border-[#3bc2f3]"
+          >
+            <option value="term1">First Term (2025/2026)</option>
+            <option value="term2">Second Term (2025/2026)</option>
+            <option value="all">Cumulative Year</option>
+          </select>
+          <Button
+            onClick={handleExportPDF}
+            className="h-9 sm:h-10 bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff] font-semibold text-xs sm:text-sm rounded-xl"
+          >
+            <Download className="mr-1.5 h-4 w-4" />
+            Export PDF
+          </Button>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="parent-panel rounded-[1.5rem] border border-border/60 bg-card/60 p-4">
-          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Overall score</div>
-          <div className="mt-3 flex items-end gap-2">
-            <div className="text-4xl font-black text-foreground">84%</div>
-            <div className="mb-1 text-sm font-bold text-emerald-400">+3%</div>
+      {/* Top 4 Stat Cards */}
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+        <Card className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100 p-4 sm:p-5 hover:border-[#384c6e] transition-colors">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Overall Score</p>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-black text-white">84%</span>
+            <span className="text-xs font-bold text-emerald-400">+3% this month</span>
           </div>
-          <div className="mt-2 text-sm text-muted-foreground">Top 15% of class</div>
+          <p className="mt-1 text-xs text-[#58c4e8]">Top 15% in cohort</p>
         </Card>
 
-        <Card className="parent-panel rounded-[1.5rem] border border-border/60 bg-card/60 p-4">
-          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Assignments done</div>
-          <div className="mt-3 flex items-end gap-2">
-            <div className="text-4xl font-black text-foreground">42</div>
-            <div className="mb-1 text-sm font-bold text-emerald-400">/45</div>
+        <Card className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100 p-4 sm:p-5 hover:border-[#384c6e] transition-colors">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Assignments Done</p>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-black text-white">42</span>
+            <span className="text-xs text-slate-400">/ 45 completed</span>
           </div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full bg-primary" style={{ width: "93%" }} />
+          <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[#080f22]">
+            <div className="h-full rounded-full bg-[#3bc2f3]" style={{ width: "93%" }} />
           </div>
         </Card>
 
-        <Card className="parent-panel rounded-[1.5rem] border border-border/60 bg-card/60 p-4">
-          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Current streak</div>
-          <div className="mt-3 flex items-end gap-2">
-            <div className="text-4xl font-black text-foreground">12</div>
-            <div className="mb-1 text-sm font-bold text-amber-400">Days</div>
+        <Card className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100 p-4 sm:p-5 hover:border-[#384c6e] transition-colors">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Active Streak</p>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-black text-amber-400">12</span>
+            <span className="text-xs text-amber-400/80">Consecutive Days</span>
           </div>
-          <div className="mt-2 text-sm text-amber-400">★ Personal best!</div>
+          <p className="mt-1 text-xs text-amber-400">★ Personal best record!</p>
         </Card>
 
-        <Card className="parent-panel rounded-[1.5rem] border border-border/60 bg-card/60 p-4">
-          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Areas of concern</div>
-          <div className="mt-3 flex items-end gap-2">
-            <div className="text-4xl font-black text-foreground">2</div>
-            <div className="mb-1 text-sm font-bold text-[#ff9d5c]">Topics</div>
+        <Card className="rounded-2xl border border-[#4c1d24] bg-[#170e17] text-slate-100 p-4 sm:p-5 hover:border-[#6f2935] transition-colors">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-rose-300">Areas of Concern</p>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-black text-rose-400">2</span>
+            <span className="text-xs text-rose-300/80">Topics identified</span>
           </div>
-          <div className="mt-2 flex items-center gap-2 text-sm text-[#ff9d5c]">
-            <CircleAlert className="h-4 w-4" />
-            Action recommended
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-rose-400">
+            <CircleAlert className="h-3.5 w-3.5" />
+            <span>Target drills suggested</span>
           </div>
         </Card>
       </div>
 
-      <div className="mt-8 grid gap-6 xl:grid-cols-[1.6fr_0.9fr]">
-        <div className="rounded-[1.8rem] border border-border/60 bg-card/60 p-5">
-          <div className="mb-5 flex items-center justify-between">
-            <h2 className="text-2xl font-black tracking-tight text-foreground">Score Trend Over Time</h2>
-            <div className="flex gap-2">
-              <Button variant="outline" className="rounded-xl border-border/60 bg-background/30 px-3 text-sm font-medium">Week</Button>
-              <Button variant="outline" className="rounded-xl border-border/60 bg-background/30 px-3 text-sm font-medium">Month</Button>
-              <Button variant="outline" className="rounded-xl border-border/60 bg-background/30 px-3 text-sm font-medium">Term</Button>
+      {/* Main Breakdown: Trend + Subject Mastery */}
+      <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
+        {/* Trend Over Time */}
+        <Card className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100">
+          <CardContent className="p-5 sm:p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[#1e2c45] pb-4">
+              <div>
+                <h2 className="text-lg sm:text-xl font-black tracking-tight text-[#71c9ed]">Score Trend Over Time</h2>
+                <p className="text-xs text-slate-400">10 most recent quiz sessions</p>
+              </div>
+              <div className="flex items-center gap-1.5 bg-[#080f22] border border-[#202b43] p-1 rounded-xl">
+                <span className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-[#0c2438] text-[#58c4e8]">Trend</span>
+                <span className="px-2.5 py-1 text-xs font-semibold text-slate-400">Bi-Weekly</span>
+              </div>
             </div>
-          </div>
 
-          <div className="rounded-[1.5rem] border border-border/60 bg-background/30 p-4">
-            <div className="mb-3 flex h-56 items-end gap-2">
-              {sparkLine.map((item, index) => (
-                <div key={index} className="flex flex-1 flex-col items-center justify-end gap-2">
-                  <div className="w-full rounded-t-xl bg-gradient-to-t from-primary/30 via-primary/60 to-primary" style={{ height: `${item}%` }} />
-                  <span className="text-[10px] font-medium text-muted-foreground">{index + 1}</span>
+            <div className="rounded-2xl border border-[#202b43] bg-[#080f22] p-4 sm:p-5">
+              <div className="flex h-52 items-end gap-2 sm:gap-3">
+                {sparkLine.map((val, idx) => (
+                  <div key={idx} className="flex flex-1 flex-col items-center justify-end gap-1.5 h-full">
+                    <span className="text-[10px] font-bold text-slate-300">{val}%</span>
+                    <div
+                      className="w-full rounded-t-lg bg-gradient-to-t from-[#0c9dcc]/30 via-[#3bc2f3] to-[#58c4e8] transition-all hover:opacity-90"
+                      style={{ height: `${val * 1.8}px` }}
+                    />
+                    <span className="text-[10px] font-medium text-slate-400">#{idx + 1}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 flex items-center justify-center gap-6 text-xs text-slate-400 pt-3 border-t border-[#1e2c45]">
+                <span className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-[#3bc2f3]" /> Student&apos;s Score
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full border border-slate-500" /> Benchmark (75%)
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Subject Mastery List */}
+        <Card className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100">
+          <CardContent className="p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#1e2c45] pb-4">
+              <div>
+                <h2 className="text-lg sm:text-xl font-black tracking-tight text-[#71c9ed]">Subject Mastery</h2>
+                <p className="text-xs text-slate-400">Core examination requirements</p>
+              </div>
+              <span className="rounded-full bg-[#0c2438] border border-[#2d4b68] px-2.5 py-0.5 text-[10px] font-bold text-[#58c4e8]">
+                Term 1
+              </span>
+            </div>
+
+            <div className="space-y-4 pt-1">
+              {subjectScores.map((item) => (
+                <div key={item.subject} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs sm:text-sm font-bold text-white">
+                    <span>{item.subject}</span>
+                    <span className="text-[#58c4e8]">{item.value}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-[#080f22]">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#0c9dcc] to-[#3bc2f3]"
+                      style={{ width: `${item.value}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-400">
+                    <span>{item.delta}</span>
+                    <span className={item.value >= 80 ? "text-emerald-400" : "text-amber-400"}>
+                      {item.value >= 80 ? "Strong" : "Average"}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
-            <div className="flex items-center justify-center gap-6 text-xs text-muted-foreground">
-              <span className="flex items-center gap-2"><span className="inline-block h-2.5 w-2.5 rounded-full bg-primary" /> Ore&apos;s Score</span>
-              <span className="flex items-center gap-2"><span className="inline-block h-2.5 w-2.5 rounded-full border border-primary/60 bg-transparent" /> Class Average</span>
+
+            <Button
+              variant="outline"
+              className="mt-2 w-full rounded-xl border-slate-700 bg-slate-900/60 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+            >
+              View Full Topic Breakdown
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Assessment Modules */}
+      <Card className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100">
+        <CardContent className="p-5 sm:p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-[#1e2c45] pb-3">
+            <div>
+              <h2 className="text-lg sm:text-xl font-black tracking-tight text-[#71c9ed]">Recent Assessments</h2>
+              <p className="text-xs text-slate-400">Graded timed simulations and mock assignments</p>
             </div>
+            <button
+              onClick={handleExportPDF}
+              className="text-xs font-semibold text-[#58c4e8] hover:text-white flex items-center gap-1 self-start sm:self-center"
+            >
+              <Download className="h-3.5 w-3.5" /> Download all results
+            </button>
           </div>
-        </div>
 
-        <div className="rounded-[1.8rem] border border-border/60 bg-card/60 p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-2xl font-black tracking-tight text-foreground">Subject Mastery</h2>
-            <button className="rounded-full border border-border/60 bg-background/40 p-2 text-muted-foreground"><ChevronDown className="h-4 w-4" /></button>
-          </div>
+          <div className="grid gap-3 sm:gap-4 md:grid-cols-3">
+            {[
+              { title: "Algebra Diagnostic Mock", status: "Mastered", score: "91%", subject: "Mathematics", date: "2 days ago" },
+              { title: "Reading Comprehension Drill", status: "Needs Practice", score: "68%", subject: "English Language", date: "4 days ago" },
+              { title: "Living Things & Habitat Quiz", status: "Strong", score: "88%", subject: "Basic Science", date: "1 week ago" },
+            ].map((item) => (
+              <div
+                key={item.title}
+                className="rounded-2xl border border-[#202b43] bg-[#080f22] p-4 flex flex-col justify-between hover:border-[#384c6e] transition-colors"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                      item.status === "Mastered"
+                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                        : item.status === "Strong"
+                        ? "bg-sky-500/10 text-sky-400 border-sky-500/30"
+                        : "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                    }`}>
+                      {item.status}
+                    </span>
+                    <span className="text-[11px] text-slate-400">{item.date}</span>
+                  </div>
 
-          <div className="space-y-4">
-            {subjectScores.map((item) => (
-              <div key={item.subject} className="space-y-2">
-                <div className="flex items-center justify-between text-base font-black text-foreground">
-                  <span>{item.subject}</span>
-                  <span>{item.value}%</span>
+                  <h3 className="text-sm sm:text-base font-bold text-[#71c9ed] leading-snug">{item.title}</h3>
+                  <p className="mt-1 text-xs text-[#58c4e8]">{item.subject}</p>
                 </div>
-                <div className="h-2.5 overflow-hidden rounded-full bg-muted">
-                  <div className="h-full rounded-full bg-primary" style={{ width: `${item.value}%` }} />
+
+                <div className="mt-4 pt-3 border-t border-[#1e2c45] flex items-center justify-between">
+                  <span className="text-xs text-slate-400">Score</span>
+                  <span className="text-lg font-black text-white">{item.score}</span>
                 </div>
-                <div className="text-xs text-muted-foreground">{item.delta}</div>
               </div>
             ))}
           </div>
-
-          <Button variant="outline" className="mt-6 w-full rounded-xl border-border/60 bg-background/30 font-semibold text-foreground">View Detailed Breakdown</Button>
-        </div>
-      </div>
-
-      <div className="mt-8 rounded-[1.8rem] border border-border/60 bg-card/60 p-5">
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-2xl font-black tracking-tight text-foreground">Recent Assessments</h2>
-          <Button variant="ghost" className="text-sm font-semibold text-primary">Download all reports</Button>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-3">
-          {[
-            { title: "Algebra Diagnostic", status: "Strong", score: "91%", tag: "Mastered" },
-            { title: "Reading Comprehension", status: "Improving", score: "83%", tag: "Needs practice" },
-            { title: "Physics Quiz", status: "Steady", score: "79%", tag: "Watch carefully" },
-          ].map((item) => (
-            <div key={item.title} className="rounded-[1.4rem] border border-border/60 bg-background/40 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-primary">{item.status}</span>
-                <span className="text-xs font-bold text-muted-foreground">{item.tag}</span>
-              </div>
-              <div className="text-xl font-black text-foreground">{item.title}</div>
-              <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-                <span>Score</span>
-                <span className="text-xl font-black text-foreground">{item.score}</span>
-              </div>
-              <div className="mt-3 flex items-center gap-2 text-sm font-medium text-emerald-400"><CheckCircle2 className="h-4 w-4" /> Completed successfully</div>
-            </div>
-          ))}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

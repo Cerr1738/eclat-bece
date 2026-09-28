@@ -95,18 +95,18 @@ export function SchoolAssignPracticeDialog({
       // Fallback subjects if edge function is unreachable
       const fallback = cohort === "year_6"
         ? {
-            Mathematics: ["Fractions", "Algebra", "Decimals", "Word Problems"],
-            "English Language": ["Grammar", "Comprehension", "Vocabulary", "Spelling"],
-            "Basic Science": ["Living Things", "Energy", "Matter", "Environment"],
-            "Social Studies": ["Culture", "Leadership", "Civic Education", "Geography"],
-          }
+          Mathematics: ["Fractions", "Algebra", "Decimals", "Word Problems"],
+          "English Language": ["Grammar", "Comprehension", "Vocabulary", "Spelling"],
+          "Basic Science": ["Living Things", "Energy", "Matter", "Environment"],
+          "Social Studies": ["Culture", "Leadership", "Civic Education", "Geography"],
+        }
         : {
-            Mathematics: ["Algebra", "Geometry", "Statistics", "Trigonometry", "Number Bases"],
-            "English Language": ["Grammar", "Comprehension", "Literary Devices", "Vocabulary"],
-            "Basic Science": ["Energy", "Living Things", "Matter & Chemicals", "Forces"],
-            "Social Studies": ["Governance", "Social Issues", "National Economy", "Culture"],
-            "Business Studies": ["Bookkeeping", "Commerce", "Office Practice", "Keyboarding"],
-          };
+          Mathematics: ["Algebra", "Geometry", "Statistics", "Trigonometry", "Number Bases"],
+          "English Language": ["Grammar", "Comprehension", "Literary Devices", "Vocabulary"],
+          "Basic Science": ["Energy", "Living Things", "Matter & Chemicals", "Forces"],
+          "Social Studies": ["Governance", "Social Issues", "National Economy", "Culture"],
+          "Business Studies": ["Bookkeeping", "Commerce", "Office Practice", "Keyboarding"],
+        };
       setSubjectsMetadata(fallback);
       setAvailableSubjects(Object.keys(fallback).sort());
     } finally {
@@ -272,11 +272,10 @@ export function SchoolAssignPracticeDialog({
                     setTargetType("all");
                     setSelectedStudentId("");
                   }}
-                  className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${
-                    targetType === "all"
-                      ? "border-primary bg-primary/5 shadow-sm"
-                      : "border-border hover:border-primary/50"
-                  }`}
+                  className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${targetType === "all"
+                    ? "border-primary bg-primary/5 shadow-sm"
+                    : "border-border hover:border-primary/50"
+                    }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <Users className="h-5 w-5 text-primary" />
@@ -289,11 +288,10 @@ export function SchoolAssignPracticeDialog({
 
                 <div
                   onClick={() => setTargetType("individual")}
-                  className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${
-                    targetType === "individual"
-                      ? "border-primary bg-primary/5 shadow-sm"
-                      : "border-border hover:border-primary/50"
-                  }`}
+                  className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${targetType === "individual"
+                    ? "border-primary bg-primary/5 shadow-sm"
+                    : "border-border hover:border-primary/50"
+                    }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <Target className="h-5 w-5 text-accent" />
@@ -340,7 +338,7 @@ export function SchoolAssignPracticeDialog({
         {/* STEP 2: SUBJECT SELECTION */}
         {step === "subject" && (
           <div className="space-y-4 py-3 animate-fade-in">
-            <h4 className="text-sm font-semibold text-muted-foreground">Select a Subject</h4>
+            <h4 className="text-sm font-semibold text-[#71c9ed]">Select a Subject</h4>
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -379,7 +377,7 @@ export function SchoolAssignPracticeDialog({
           <div className="space-y-4 py-3 animate-fade-in">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-sm font-bold text-foreground">{selectedSubject} Topics</h4>
+                <h4 className="text-sm font-bold text-[#71c9ed]">{selectedSubject} Topics</h4>
                 <p className="text-xs text-muted-foreground">
                   Select specific topics or assign all topics
                 </p>
@@ -402,9 +400,8 @@ export function SchoolAssignPracticeDialog({
                     <div
                       key={topic}
                       onClick={() => handleToggleTopic(topic)}
-                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                        isChecked ? "bg-primary/5 border-primary" : "border-border/60 hover:bg-muted/40"
-                      }`}
+                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${isChecked ? "bg-primary/5 border-primary" : "border-border/60 hover:bg-muted/40"
+                        }`}
                     >
                       <Checkbox checked={isChecked} onCheckedChange={() => handleToggleTopic(topic)} />
                       <span className="text-sm font-medium">{topic}</span>
