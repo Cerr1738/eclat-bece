@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useState } from "react";
-import { LayoutDashboard, Users, CreditCard, HelpCircle, Bell, Settings, LogOut, User as UserIcon, KeyRound, Copy, Check } from "lucide-react";
+import { LayoutDashboard, Users, ClipboardCheck, BarChart3, CreditCard, HelpCircle, Bell, Settings, LogOut, User as UserIcon, KeyRound, Copy, Check } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -97,8 +97,9 @@ export function ParentLayout({ children }: ParentLayoutProps) {
     const navItems = [
         { title: "Dashboard", url: "/dashboard/parent", icon: LayoutDashboard },
         { title: "Children", url: "/dashboard/parent/children", icon: Users },
+        { title: "Tasks", url: "/dashboard/parent/assignments", icon: ClipboardCheck },
+        { title: "Reports", url: "/dashboard/parent/reports", icon: BarChart3 },
         { title: "Billing", url: "/dashboard/parent/subscriptions", icon: CreditCard },
-        { title: "Resources", url: "/dashboard/parent/resources", icon: HelpCircle },
     ];
 
     const currentPath = location.pathname + location.hash;
@@ -106,12 +107,14 @@ export function ParentLayout({ children }: ParentLayoutProps) {
 
     return (
         <SidebarProvider>
-            <div data-parent-theme={resolvedTheme === "dark" ? "dark" : "light"} className="min-h-screen flex w-full bg-[#080f22] text-slate-100 dashboard-theme">
-                <ParentSidebar />
+            <div className="parent-shell min-h-screen flex w-full dashboard-theme">
+                <div className="print:hidden">
+                    <ParentSidebar />
+                </div>
 
-                <div className="flex-1 flex flex-col relative min-w-0">
-                    <header className="sticky top-0 z-40 border-b border-[#202b43] bg-[#080f22]/95 backdrop-blur-xl">
-                        <div className="flex items-center justify-between px-4 py-3.5 sm:px-6">
+                <div className="flex-1 flex flex-col relative print:p-0 print:m-0">
+                    <header className="sticky top-0 z-40 border-b border-border/40 bg-background/75 backdrop-blur-xl print:hidden">
+                        <div className="flex items-center justify-between px-4 py-4 sm:px-6">
                             <div className="flex items-center gap-4">
                                 <SidebarTrigger className="md:hidden text-slate-300 hover:text-white hover:bg-[#15233c] transition-colors" />
                                 <img
@@ -175,8 +178,12 @@ export function ParentLayout({ children }: ParentLayoutProps) {
                                                 <span className="select-all rounded border border-[#26344d] bg-[#0d162a] px-1.5 py-0.5 font-mono text-[10px] font-black text-[#58c4e8]">{uniqueId}</span>
                                             </div>
                                         </DropdownMenuItem>
-                                        <DropdownMenuSeparator className="my-1.5 bg-[#202b43]" />
-                                        <DropdownMenuItem onClick={() => signOut()} className="cursor-pointer rounded-xl py-2 font-bold text-red-400 hover:bg-red-500/10 hover:text-red-300">
+                                        <DropdownMenuItem onClick={() => navigate("/dashboard/parent/resources")} className="cursor-pointer rounded-xl py-2 font-bold">
+                                            <HelpCircle className="mr-2 h-4 w-4 text-muted-foreground" />
+                                            <span>Help & Resources</span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator className="my-1.5" />
+                                        <DropdownMenuItem onClick={() => signOut()} className="cursor-pointer rounded-xl py-2 font-bold text-destructive focus:bg-destructive/10 focus:text-destructive">
                                             <LogOut className="mr-2 h-4 w-4" />
                                             <span>Sign Out</span>
                                         </DropdownMenuItem>
@@ -186,11 +193,11 @@ export function ParentLayout({ children }: ParentLayoutProps) {
                         </div>
                     </header>
 
-                    <main className="flex-1 pb-24 md:pb-8">
-                        <div className="parent-page-shell">{children}</div>
+                    <main className="flex-1 pb-24 md:pb-8 print:p-0 print:pb-0">
+                        <div className="parent-page-shell print:p-0 print:m-0 print:max-w-none">{children}</div>
                     </main>
 
-                    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-[#26344d] bg-[#071023]/95 px-2 py-3 backdrop-blur-xl shadow-[0_-10px_30px_rgba(0,0,0,0.4)] md:hidden">
+                    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/60 bg-background/95 px-2 py-3 backdrop-blur-xl shadow-[0_-10px_30px_rgba(0,0,0,0.18)] md:hidden print:hidden">
                         <div className="mx-auto flex max-w-md items-center justify-around">
                             {navItems.map((item) => {
                                 const Icon = item.icon;
@@ -218,7 +225,7 @@ export function ParentLayout({ children }: ParentLayoutProps) {
                             })}
                             <button
                                 onClick={() => signOut()}
-                                className="flex flex-col items-center gap-1 text-slate-400 hover:text-red-400"
+                                className="flex flex-col items-center gap-1 text-muted-foreground opacity-80 hover:text-destructive"
                             >
                                 <LogOut className="h-6 w-6 stroke-[2px]" />
                                 <span className="text-[10px] font-bold uppercase tracking-tight opacity-60">Exit</span>

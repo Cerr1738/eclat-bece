@@ -66,6 +66,7 @@ import AdminCompetitionsPage from "./pages/AdminCompetitionsPage";
 import AdminReportsPage from "./pages/AdminReportsPage";
 import AdminSettingsPage from "./pages/AdminSettingsPage";
 import PassagesPage from "./pages/PassagesPage";
+import AdminSubjectsPage from "./pages/AdminSubjectsPage";
 import FlagReportsPage from "./pages/admin/FlagReportsPage";
 import { AuthProvider } from "./components/AuthProvider";
 import { PrivacyPolicy } from "./components/PrivacyPolicy";
@@ -74,6 +75,7 @@ import AboutPage from "./pages/AboutPage";
 import PricingPage from "./pages/PricingPage";
 import FeaturesPage from "./pages/FeaturesPage";
 import PublicLeaderboardPage from "./pages/PublicLeaderboardPage";
+import CertificateVerificationPage from "./pages/CertificateVerificationPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -99,6 +101,7 @@ const App = () => (
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/features" element={<FeaturesPage />} />
               <Route path="/leaderboard" element={<PublicLeaderboardPage />} />
+              <Route path="/verify-certificate" element={<CertificateVerificationPage />} />
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="/terms-of-service" element={<TermsOfService />} />
               <Route path="/role-selection" element={<Navigate to="/auth/login/role-selection" replace />} />
@@ -108,7 +111,7 @@ const App = () => (
               <Route path="/parent-login" element={<ParentLoginInPage />} />
               <Route path="/parent-signup" element={<ParentSignUpPage />} />
               <Route path="/student-login" element={<StudentLogInPage />} />
-              <Route path="/school-signup" element={<SchoolSignUpPage />} />
+              <Route path="/student-signup" element={<Navigate to="/student-login" replace />} />
               <Route path="/school-login" element={<SchoolLogInPage />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/password-reset" element={<PasswordResetPage />} />
@@ -128,6 +131,11 @@ const App = () => (
                   <StudentLayout>
                     <StudentDashboardOverview />
                   </StudentLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/dashboard/student/daily-challenge" element={
+                <ProtectedRoute requiredRole="student">
+                  <Navigate to="/quiz?mode=daily_challenge" replace />
                 </ProtectedRoute>
               } />
               <Route path="/dashboard/student/practice" element={
@@ -307,6 +315,11 @@ const App = () => (
                 <Route path="questions" element={
                   <AdminPermissionGuard requiredPermission="canManageQuestions" resourceName="Question Bank">
                     <QuestionBankPage />
+                  </AdminPermissionGuard>
+                } />
+                <Route path="subjects" element={
+                  <AdminPermissionGuard requiredPermission="canManageQuestions" resourceName="Subjects">
+                    <AdminSubjectsPage />
                   </AdminPermissionGuard>
                 } />
                 <Route path="passages" element={

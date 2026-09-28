@@ -45,6 +45,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useSubjects } from "@/hooks/useSubjects";
 
 export interface QuestionOption {
     id: string;
@@ -93,7 +94,9 @@ export function DuplicateQuestionsModal({
 }: DuplicateQuestionsModalProps) {
     const [clusters, setClusters] = useState<DuplicateCluster[]>([]);
     const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
     const [subjectFilter, setSubjectFilter] = useState<string>("all");
+    const { subjects } = useSubjects({ classYear, onlyActive: false });
     const [matchTypeFilter, setMatchTypeFilter] = useState<"all" | "exact_clone" | "same_prompt" | "fuzzy">("all");
     const [selectedCanonicals, setSelectedCanonicals] = useState<Record<string, string>>({});
     const [resolvingClusterId, setResolvingClusterId] = useState<string | null>(null);
@@ -102,6 +105,7 @@ export function DuplicateQuestionsModal({
 
     const fetchClusters = useCallback(async () => {
         setLoading(true);
+        setFetchError(null);
         setClusters([]);
         try {
             const { data, error } = await supabase.rpc("find_duplicate_question_clusters", {
@@ -126,6 +130,7 @@ export function DuplicateQuestionsModal({
             setSelectedCanonicals(initialCanonicals);
         } catch (error: any) {
             console.error("Error fetching duplicate question clusters:", error);
+            setFetchError(error.message || "Failed to load duplicate questions");
             toast.error(error.message || "Failed to load duplicate questions");
         } finally {
             setLoading(false);
@@ -286,10 +291,11 @@ export function DuplicateQuestionsModal({
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">All Subjects</SelectItem>
-                                        <SelectItem value="Mathematics">Mathematics</SelectItem>
-                                        <SelectItem value="English Language">English Language</SelectItem>
-                                        <SelectItem value="Basic Science">Basic Science</SelectItem>
-                                        <SelectItem value="Social Studies">Social Studies</SelectItem>
+                                        {subjects.map((sub) => (
+                                            <SelectItem key={sub.id} value={sub.name}>
+                                                {sub.icon} {sub.name}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -320,6 +326,13 @@ export function DuplicateQuestionsModal({
                                 Refresh
                             </Button>
                         </div>
+
+                        {matchTypeFilter === "fuzzy" && subjectFilter === "all" && (
+                            <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 rounded px-2.5 py-1 flex items-center gap-1.5">
+                                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                                <span>Tip: Selecting a specific subject will significantly speed up fuzzy scanning across large question pools.</span>
+                            </div>
+                        )}
                     </DialogHeader>
 
                     {/* Scrollable Content */}
@@ -328,6 +341,20 @@ export function DuplicateQuestionsModal({
                             <div className="h-full flex flex-col items-center justify-center gap-3">
                                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                                 <p className="text-sm text-muted-foreground">Scanning question bank for duplicates...</p>
+                            </div>
+                        ) : fetchError ? (
+                            <div className="h-full flex flex-col items-center justify-center text-center p-8">
+                                <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center mb-3">
+                                    <AlertTriangle className="h-6 w-6 text-destructive" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-destructive">Failed to Load Duplicates</h3>
+                                <p className="text-sm text-muted-foreground max-w-md mt-1 mb-4">
+                                    {fetchError}
+                                </p>
+                                <Button variant="outline" size="sm" onClick={fetchClusters}>
+                                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                                    Try Again
+                                </Button>
                             </div>
                         ) : clusters.length === 0 ? (
                             <div className="h-full flex flex-col items-center justify-center text-center p-8">

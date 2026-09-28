@@ -21,6 +21,8 @@ interface SchoolAssignPracticeDialogProps {
   onOpenChange: (open: boolean) => void;
   schoolId: string;
   defaultCohort?: "year_6" | "year_9";
+  initialSubject?: string;
+  initialTopic?: string;
   students: StudentOption[];
   onSuccess?: () => void;
 }
@@ -32,6 +34,8 @@ export function SchoolAssignPracticeDialog({
   onOpenChange,
   schoolId,
   defaultCohort = "year_9",
+  initialSubject,
+  initialTopic,
   students,
   onSuccess,
 }: SchoolAssignPracticeDialogProps) {
@@ -61,7 +65,7 @@ export function SchoolAssignPracticeDialog({
     }
   }, [defaultCohort]);
 
-  // Reset form when dialog closes
+  // Reset or pre-fill form when dialog opens/closes
   useEffect(() => {
     if (!open) {
       setStep("target");
@@ -73,8 +77,15 @@ export function SchoolAssignPracticeDialog({
       setSelectedStudentId("");
     } else {
       fetchMetadata(selectedCohort);
+      if (initialSubject) {
+        setSelectedSubject(initialSubject);
+        if (initialTopic) {
+          setSelectedTopics([initialTopic]);
+        }
+        setStep("config");
+      }
     }
-  }, [open, selectedCohort]);
+  }, [open, selectedCohort, initialSubject, initialTopic]);
 
   const fetchMetadata = async (cohort: "year_6" | "year_9") => {
     setIsLoading(true);
@@ -89,7 +100,15 @@ export function SchoolAssignPracticeDialog({
       if (error) throw error;
       const metadata = data?.metadata || {};
       setSubjectsMetadata(metadata);
-      setAvailableSubjects(Object.keys(metadata).sort());
+
+      // Also merge any configured subjects from database for this cohort
+      const { data: dbSubjects } = await (supabase.from("subjects" as any) as any)
+        .select("name")
+        .eq(cohort === "year_6" ? "available_year_6" : "available_year_9", true)
+        .eq("is_active", true);
+
+      const allKeys = new Set([...Object.keys(metadata), ...(dbSubjects || []).map((s: any) => s.name)]);
+      setAvailableSubjects(Array.from(allKeys).sort());
     } catch (error: any) {
       console.error("Error fetching subject metadata:", error);
       // Fallback subjects if edge function is unreachable
@@ -399,12 +418,26 @@ export function SchoolAssignPracticeDialog({
                   return (
                     <div
                       key={topic}
+                      role="checkbox"
+                      aria-checked={isChecked}
+                      tabIndex={0}
                       onClick={() => handleToggleTopic(topic)}
-                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${isChecked ? "bg-primary/5 border-primary" : "border-border/60 hover:bg-muted/40"
-                        }`}
+                      onKeyDown={(e) => {
+                        if (e.key === " " || e.key === "Enter") {
+                          e.preventDefault();
+                          handleToggleTopic(topic);
+                        }
+                      }}
+                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                        isChecked ? "bg-primary/5 border-primary" : "border-border/60 hover:bg-muted/40"
+                      }`}
                     >
-                      <Checkbox checked={isChecked} onCheckedChange={() => handleToggleTopic(topic)} />
-                      <span className="text-sm font-medium">{topic}</span>
+                      <Checkbox 
+                        checked={isChecked} 
+                        tabIndex={-1}
+                        className="pointer-events-none" 
+                      />
+                      <span className="text-sm font-medium select-none flex-1">{topic}</span>
                     </div>
                   );
                 })}

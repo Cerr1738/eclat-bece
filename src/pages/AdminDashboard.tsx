@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, BookOpen, Trophy, TrendingUp, Activity, Shield, ChevronLeft, ChevronRight, UserPlus, UserMinus, Edit, Trash2, Mail, Upload, Search, Download, Filter, Flag } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,30 +50,46 @@ export default function AdminDashboard() {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [searchQuery, setSearchQuery] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
     const [actionFilter, setActionFilter] = useState<string>("all");
     const [resourceFilter, setResourceFilter] = useState<string>("all");
     const ITEMS_PER_PAGE = 10;
+    const fetchIdRef = useRef(0);
+    const prevFilterRef = useRef({ debouncedSearch, actionFilter, resourceFilter });
 
     useEffect(() => {
         fetchAdminData();
         fetchPlatformStats();
     }, [user]);
 
+    // Debounce search query input (350ms)
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchQuery);
+        }, 350);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
+
+    // Single unified effect to fetch activity when page, debounced search, or filters change
     useEffect(() => {
         if (!isSuperAdmin) return;
-        const timer = setTimeout(() => {
-            setCurrentPage(1); // Reset to first page when filters change
-            fetchRecentActivity();
-        }, 300); // Debounce search
 
-        return () => clearTimeout(timer);
-    }, [searchQuery, actionFilter, resourceFilter, isSuperAdmin]);
+        const filterChanged =
+            prevFilterRef.current.debouncedSearch !== debouncedSearch ||
+            prevFilterRef.current.actionFilter !== actionFilter ||
+            prevFilterRef.current.resourceFilter !== resourceFilter;
 
-    useEffect(() => {
-        if (isSuperAdmin) {
-            fetchRecentActivity();
+        prevFilterRef.current = { debouncedSearch, actionFilter, resourceFilter };
+
+        // If a filter or search term changed while on a page > 1, reset to page 1
+        // (the subsequent re-render with currentPage=1 will trigger the fetch)
+        if (filterChanged && currentPage !== 1) {
+            setCurrentPage(1);
+            return;
         }
-    }, [currentPage, isSuperAdmin]);
+
+        fetchRecentActivity();
+    }, [currentPage, debouncedSearch, actionFilter, resourceFilter, isSuperAdmin]);
 
     const fetchAdminData = async () => {
         if (!user) return;
@@ -92,42 +108,29 @@ export default function AdminDashboard() {
 
     const fetchPlatformStats = async () => {
         try {
-            // Count students
-            const { count: studentCount } = await supabase
-                .from("students")
-                .select("*", { count: "exact", head: true });
-
-            // Count parents
-            const { count: parentCount } = await supabase
-                .from("parents")
-                .select("*", { count: "exact", head: true });
-
-            // Count schools
-            const { count: schoolCount } = await supabase
-                .from("schools")
-                .select("*", { count: "exact", head: true });
-
-            // Count quiz questions (Year 6 + Year 9)
-            const { count: year6Questions } = await supabase
-                .from("quiz_questions_year6")
-                .select("*", { count: "exact", head: true });
-
-            const { count: year9Questions } = await supabase
-                .from("quiz_questions_year9")
-                .select("*", { count: "exact", head: true });
-
-            // Count total quizzes taken
-            const { count: quizzesTaken } = await supabase
-                .from("quiz_results")
-                .select("*", { count: "exact", head: true });
-
-            // Count active students today (unique students who completed at least 1 quiz today)
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            const { data: activeTodayData } = await supabase
-                .from("quiz_results")
-                .select("student_id")
-                .gte("completed_at", today.toISOString());
+
+            // Fetch all platform statistics concurrently with Promise.all
+            const [
+                { count: studentCount },
+                { count: parentCount },
+                { count: schoolCount },
+                { count: year6Questions },
+                { count: year9Questions },
+                { count: quizzesTaken },
+                { data: activeTodayData },
+                { count: flagsCount }
+            ] = await Promise.all([
+                supabase.from("students").select("*", { count: "exact", head: true }),
+                supabase.from("parents").select("*", { count: "exact", head: true }),
+                supabase.from("schools").select("*", { count: "exact", head: true }),
+                supabase.from("quiz_questions_year6").select("*", { count: "exact", head: true }),
+                supabase.from("quiz_questions_year9").select("*", { count: "exact", head: true }),
+                supabase.from("quiz_results").select("*", { count: "exact", head: true }),
+                supabase.from("quiz_results").select("student_id").gte("completed_at", today.toISOString()),
+                supabase.from("flagged_questions").select("*", { count: "exact", head: true }).eq("status", "pending")
+            ]);
 
             const activeTodayCount = activeTodayData
                 ? new Set(activeTodayData.map(r => r.student_id)).size
@@ -142,12 +145,6 @@ export default function AdminDashboard() {
                 activeStudentsToday: activeTodayCount,
             });
 
-            // Count pending flagged questions
-            const { count: flagsCount } = await supabase
-                .from("flagged_questions")
-                .select("*", { count: "exact", head: true })
-                .eq("status", "pending");
-
             setPendingFlagsCount(flagsCount || 0);
         } catch (error) {
             console.error("Error fetching stats:", error);
@@ -157,6 +154,7 @@ export default function AdminDashboard() {
     };
 
     const fetchRecentActivity = async () => {
+        const currentFetchId = ++fetchIdRef.current;
         try {
             let query = supabase
                 .from("admin_audit_log" as any)
@@ -180,22 +178,26 @@ export default function AdminDashboard() {
                 query = query.eq('resource_type', resourceFilter);
             }
 
-            // Apply search (search in admin name or details)
-            if (searchQuery) {
+            // Apply debounced search (search in admin name or details)
+            if (debouncedSearch) {
                 // Note: This is a simplified search. For better performance,
                 // consider using PostgreSQL full-text search
-                query = query.or(`details->>admin_name.ilike.%${searchQuery}%,details->>admin_email.ilike.%${searchQuery}%,details->>target_user_email.ilike.%${searchQuery}%,details->>email.ilike.%${searchQuery}%`);
+                query = query.or(`details->>admin_name.ilike.%${debouncedSearch}%,details->>admin_email.ilike.%${debouncedSearch}%,details->>target_user_email.ilike.%${debouncedSearch}%,details->>email.ilike.%${debouncedSearch}%`);
             }
 
             const { data, count } = await query
                 .order("created_at", { ascending: false })
                 .range((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE - 1) as any;
 
+            // Discard stale in-flight responses if another query was launched in the meantime
+            if (currentFetchId !== fetchIdRef.current) return;
+
             if (data) {
                 setRecentActivity(data as RecentActivity[]);
                 setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
             }
         } catch (error) {
+            if (currentFetchId !== fetchIdRef.current) return;
             console.error("Error fetching recent activity:", error);
         }
     };

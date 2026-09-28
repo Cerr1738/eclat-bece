@@ -1,6 +1,20 @@
-import { useState } from "react";
-import { HelpCircle, BookOpen, FileText, Mail, Phone, MessageSquare, Loader2, ChevronRight, Search, ShieldCheck, ArrowRight, Sparkles } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useState, useMemo } from "react";
+import { 
+  HelpCircle, 
+  BookOpen, 
+  FileText, 
+  Mail, 
+  Phone, 
+  MessageSquare, 
+  Loader2, 
+  ChevronRight, 
+  Search, 
+  ShieldCheck, 
+  ArrowRight,
+  ExternalLink,
+  X
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,11 +23,45 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 
+const FAQ_ITEMS = [
+  {
+    question: "How do I link my child’s school account to my parent portal?",
+    answer: "Go to 'My Children' and click 'Add Child'. Select the 'Link Existing' tab and enter your child's student unique ID (e.g. STU-12345) or username. Once submitted, your child will receive an instant link notification in their student dashboard to confirm connection.",
+    category: "Link Child"
+  },
+  {
+    question: "Can I assign specific topics that my child is struggling with?",
+    answer: "Yes! Navigate to Assignments Manager or click 'Assign Task' on any child overview card. You can select the curriculum subject, pick specific weak topics (e.g. Fractions, Cell Biology), choose question volume, and set a custom time limit.",
+    category: "Parent Guidance"
+  },
+  {
+    question: "How are the national leaderboard and percentile ranks calculated?",
+    answer: "The national ranking algorithm evaluates quiz accuracy, difficulty tier, speed, and continuous daily streaks. Students who practice daily and master higher difficulty questions rank higher on the national BECE / Common Entrance leaderboard.",
+    category: "Common Entrance"
+  },
+  {
+    question: "What should I do if my child misses an assignment deadline or falls behind?",
+    answer: "You can click 'Remind Child' directly from the Assignments Manager page. This triggers an urgent in-app notification to your child's dashboard encouraging them to complete the task before the weekend.",
+    category: "Parent Guidance"
+  },
+  {
+    question: "How does Éclat ensure questions align with the Nigerian curriculum?",
+    answer: "All questions in our question bank are designed and vetted by seasoned Nigerian junior secondary and primary education examiners in strict compliance with the NERDC, WAEC BECE, and National Common Entrance syllabus.",
+    category: "BECE Syllabus"
+  },
+  {
+    question: "How do subscriptions work for families with multiple children?",
+    answer: "Each child can have an individual Standard or Premium tier subscription. You can manage or upgrade each child independently from the Subscriptions & Billing tab with zero hidden fees.",
+    category: "Billing"
+  }
+];
+
 export default function ParentResourcesPage() {
   const { user } = useAuth();
   const [supportMessage, setSupportMessage] = useState("");
   const [sendingSupport, setSendingSupport] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [accordionValues, setAccordionValues] = useState<string[]>([]);
 
   const handleSendSupport = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,28 +91,88 @@ export default function ParentResourcesPage() {
     }
   };
 
+  const handleOpenWhatsApp = () => {
+    window.open("https://wa.me/2348130202112?text=Hello%20%C3%89clat%20Support%2C%20I%20am%20a%20parent%20and%20need%20assistance%20with%20my%20parent%20portal.", "_blank");
+  };
+
   const guideCards = [
-    { icon: BookOpen, title: "Standard Examinations", subtitle: "Common Entrance & BECE Guide", description: "Scoring rubrics, reliable question types, and revision timelines for all core subjects." },
-    { icon: FileText, title: "Family Accounts", subtitle: "Managing children & codes", description: "Generate or update a child profile, link a student account, and track daily activity." },
-    { icon: ShieldCheck, title: "Targeted Mastery", subtitle: "Parent tasks & custom drills", description: "Assign custom drills and focus on weak topics identified by diagnostic analytics." },
-    { icon: HelpCircle, title: "Billing & Subscriptions", subtitle: "Invoicing & card management", description: "Manage multiple children, update annual plan renewals, and view payment history." },
+    { 
+      icon: BookOpen, 
+      title: "Standard Exams", 
+      subtitle: "Common Entrance & BECE Guide", 
+      description: "Scoring rubrics, reliable practice resources, and revision timelines for all core subjects.",
+      actionQuery: "Common Entrance"
+    },
+    { 
+      icon: FileText, 
+      title: "Family Accounts", 
+      subtitle: "Managing children & codes", 
+      description: "Generate or update a child account, link a student profile, and monitor activity quickly.",
+      actionQuery: "Link Child"
+    },
+    { 
+      icon: ShieldCheck, 
+      title: "Targeted Mastery", 
+      subtitle: "Parent tasks & custom quizzes", 
+      description: "Create custom tasks and focus on weak areas with guided, targeted practice drill sets.",
+      actionQuery: "Parent Guidance"
+    },
+    { 
+      icon: HelpCircle, 
+      title: "Invoicing & Cards", 
+      subtitle: "Billing & family subscriptions", 
+      description: "Manage multiple children, update billing info, and download invoices with confidence.",
+      actionQuery: "Billing"
+    },
   ];
 
-  const filteredGuides = guideCards.filter(
-    (g) =>
-      g.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      g.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      g.subtitle.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredFaqs = useMemo(() => {
+    if (!searchQuery.trim()) return FAQ_ITEMS;
+    const q = searchQuery.toLowerCase();
+    return FAQ_ITEMS.filter((item) => 
+      item.question.toLowerCase().includes(q) || 
+      item.answer.toLowerCase().includes(q) ||
+      item.category.toLowerCase().includes(q)
+    );
+  }, [searchQuery]);
+
+  const allFaqKeys = useMemo(() => filteredFaqs.map((_, idx) => `item-${idx + 1}`), [filteredFaqs]);
+  const isAllExpanded = allFaqKeys.length > 0 && accordionValues.length === allFaqKeys.length;
+
+  const toggleExpandAll = () => {
+    if (isAllExpanded) {
+      setAccordionValues([]);
+    } else {
+      setAccordionValues(allFaqKeys);
+    }
+  };
 
   return (
-    <div className="w-full space-y-6 sm:space-y-8 animate-fade-in">
-      {/* Header section */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-[#2d4b68] bg-[#0c2438] px-3 py-1 text-[11px] font-semibold text-[#58c4e8]">
-            <HelpCircle className="h-3.5 w-3.5" />
-            <span>Support &amp; Learning</span>
+    <div className="w-full px-3 pb-20 pt-6 md:px-6">
+      {/* Top Banner */}
+      <div className="rounded-[2rem] border border-border/60 bg-card/60 p-6 shadow-[0_12px_30px_rgba(4,12,20,0.12)] md:p-8">
+        <div className="parent-section-chip mb-4">Academic Service</div>
+        <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h1 className="text-4xl font-black tracking-tight text-foreground md:text-5xl">Help & Support Hub</h1>
+            <p className="mt-2 text-base text-muted-foreground">Find structured curriculum breakdowns, step-by-step parent guides, or connect directly with an Éclat education specialist.</p>
+          </div>
+          <div className="relative w-full max-w-xl">
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input 
+              placeholder="Search topics, Common Entrance FAQ, BECE syllabus, or billing..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="parent-search h-12 bg-background/40 pl-11 pr-10" 
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
           <h1 className="mt-2 text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-[#71c9ed]">
             Help &amp; Support Hub<span className="text-[#3bc2f3]">.</span>
@@ -74,100 +182,104 @@ export default function ParentResourcesPage() {
           </p>
         </div>
 
-        <div className="relative w-full max-w-sm">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search guides, FAQ, or billing..."
-            className="pl-10 h-10 rounded-xl border border-[#26344d] bg-[#0d162a] text-xs sm:text-sm text-slate-200 placeholder:text-slate-400 focus:border-[#3bc2f3]/60 focus:ring-1 focus:ring-[#3bc2f3]/20"
-          />
+        <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+          <span className="rounded-full border border-border/60 bg-background/30 px-2.5 py-1">Trending:</span>
+          {["Parent Guidance", "Link Child", "Common Entrance", "Billing"].map((tag) => (
+            <button
+              key={tag}
+              onClick={() => setSearchQuery(tag)}
+              className={`rounded-full border px-2.5 py-1 transition-all ${searchQuery === tag ? 'border-primary bg-primary text-primary-foreground' : 'border-border/60 bg-background/30 hover:border-primary/50'}`}
+            >
+              {tag}
+            </button>
+          ))}
+          {searchQuery && (
+            <button 
+              onClick={() => setSearchQuery("")}
+              className="text-xs text-primary underline ml-2 font-bold normal-case"
+            >
+              Clear filter
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Main Grid: Knowledge Categories & Direct Assistance */}
-      <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-        <div className="space-y-6 sm:space-y-8">
-          {/* Guide Cards */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="h-5 w-1 bg-[#3bc2f3] rounded-full" />
-                <h2 className="text-lg sm:text-xl font-black text-[#71c9ed] tracking-tight">Parent Guides &amp; Resources</h2>
-              </div>
-              <span className="text-xs text-slate-400">{filteredGuides.length} articles</span>
-            </div>
-
-            <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
-              {filteredGuides.map(({ icon: Icon, title, subtitle, description }, index) => (
-                <Card
-                  key={title}
-                  className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100 hover:border-[#384c6e] transition-colors p-4 sm:p-5 flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="mb-3.5 flex h-10 w-10 items-center justify-center rounded-xl bg-[#0c2438] text-[#58c4e8] border border-[#2d4b68]">
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{subtitle}</span>
-                    <h3 className="mt-1 text-base font-bold text-[#71c9ed]">{title}</h3>
-                    <p className="mt-2 text-xs leading-relaxed text-slate-300">{description}</p>
-                  </div>
-                  <div className="mt-4 pt-3 border-t border-[#1e2c45] flex items-center justify-between text-xs font-semibold text-[#58c4e8] hover:text-white cursor-pointer">
-                    <span>Read walkthrough</span>
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </div>
-                </Card>
-              ))}
-            </div>
+      <div className="mt-8 grid gap-6 xl:grid-cols-[1.4fr_0.9fr]">
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-black tracking-tight text-foreground">Curated Knowledge Categories</h2>
+            <span className="text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">Quick Knowledge Guides</span>
           </div>
 
-          {/* Frequently Asked Questions */}
-          <Card className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100 p-5 sm:p-6 space-y-4">
-            <div className="flex items-center gap-2 border-b border-[#1e2c45] pb-3">
-              <div className="h-5 w-1 bg-[#3bc2f3] rounded-full" />
-              <h3 className="text-lg sm:text-xl font-black text-[#71c9ed] tracking-tight">Frequently Asked Questions</h3>
+          <div className="grid gap-4 md:grid-cols-2">
+            {guideCards.map(({ icon: Icon, title, subtitle, description, actionQuery }) => (
+              <Card 
+                key={title} 
+                onClick={() => setSearchQuery(actionQuery)}
+                className="parent-panel rounded-[1.5rem] border border-border/60 bg-card/60 p-5 cursor-pointer transition-all hover:border-primary/50 group"
+              >
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-border/60 bg-background/40 text-primary group-hover:scale-110 transition-transform">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">{subtitle}</div>
+                <h3 className="text-xl font-black text-foreground group-hover:text-primary transition-colors">{title}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+                <div className="mt-4 flex items-center justify-between text-xs font-bold uppercase tracking-[0.18em] text-primary">
+                  <span>View FAQs</span>
+                  <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          <div className="rounded-[1.8rem] border border-border/60 bg-card/60 p-5 md:p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-2xl font-black text-foreground">Frequently Asked Inquiries</h3>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold text-muted-foreground">{filteredFaqs.length} answers</span>
+                {filteredFaqs.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleExpandAll}
+                    className="h-7 px-2.5 text-xs font-bold text-primary hover:text-primary/80 hover:bg-primary/10 rounded-lg"
+                  >
+                    {isAllExpanded ? "Collapse all" : "Expand all"}
+                  </Button>
+                )}
+              </div>
             </div>
 
-            <Accordion type="single" collapsible className="w-full space-y-2.5">
-              {[
-                {
-                  q: "How do I link my child's school account to my parent portal?",
-                  a: "Use the unique connection code provided under your parent avatar menu. When your child signs in, they can input your code, or you can register them directly with their student ID.",
-                },
-                {
-                  q: "Can I assign specific topics that my child is struggling with?",
-                  a: "Yes! Use the 'Assign Practice' button on the Assignments page or directly from your child's card in 'My Children'. You can select any curriculum subject and drill down to exact sub-topics.",
-                },
-                {
-                  q: "How are the national leaderboard and percentile ranks calculated?",
-                  a: "Percentile ranks are calculated dynamically across all registered learners in the same class year cohort (Year 6 Common Entrance or Year 9 BECE) based on accuracy and quiz volume.",
-                },
-                {
-                  q: "How does Éclat ensure questions match the national curriculum?",
-                  a: "All question banks, reading comprehension passages, and diagrams are curated specifically for the Nigerian Basic Education Certificate Examination (BECE) and National Common Entrance Examination (NCEE) syllabi.",
-                },
-              ].map((item, idx) => (
-                <AccordionItem
-                  key={idx}
-                  value={`item-${idx}`}
-                  className="rounded-xl border border-[#202b43] bg-[#080f22] px-4"
-                >
-                  <AccordionTrigger className="py-3 text-left text-xs sm:text-sm font-semibold text-slate-200 hover:text-white hover:no-underline">
-                    {item.q}
-                  </AccordionTrigger>
-                  <AccordionContent className="pb-3 text-xs leading-relaxed text-slate-400">
-                    {item.a}
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
-          </Card>
+            {filteredFaqs.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                No matching inquiries found for &quot;{searchQuery}&quot;. Try a different search term or send us a message below.
+              </div>
+            ) : (
+              <Accordion 
+                type="multiple" 
+                value={accordionValues} 
+                onValueChange={setAccordionValues} 
+                className="w-full space-y-3"
+              >
+                {filteredFaqs.map((item, idx) => (
+                  <AccordionItem key={item.question} value={`item-${idx + 1}`} className="rounded-2xl border border-border/60 bg-background/40 px-4">
+                    <AccordionTrigger className="py-4 text-left text-base font-bold text-foreground hover:no-underline">
+                      {item.question}
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-4 text-sm leading-6 text-muted-foreground">
+                      {item.answer}
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            )}
+          </div>
         </div>
 
-        {/* Contact & Support Section */}
-        <div className="space-y-6">
-          <Card className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100 p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-[#1e2c45] pb-3">
+        {/* Right Column: Direct Support Desk */}
+        <div className="space-y-5">
+          <Card className="parent-panel rounded-[1.75rem] border border-border/60 bg-card/60 p-5 shadow-sm">
+            <div className="flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Direct Assistance</span>
                 <h3 className="text-base sm:text-lg font-bold text-[#71c9ed] mt-0.5">Parent Support Desk</h3>
@@ -177,66 +289,82 @@ export default function ParentResourcesPage() {
               </span>
             </div>
 
-            <div className="rounded-xl border border-[#202b43] bg-[#080f22] p-4 space-y-2">
-              <h4 className="text-sm font-bold text-[#71c9ed]">Need exam advice for your child?</h4>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Our education coordinators are available to help you interpret mock results and craft personalized revision schedules.
-              </p>
-              <Button
-                onClick={() => window.open("https://wa.me/2348130202112", "_blank")}
-                className="w-full mt-2 bg-[#25d366]/20 text-[#25d366] hover:bg-[#25d366]/30 border border-[#25d366]/30 text-xs font-semibold rounded-xl h-9"
+            <div className="mt-5 rounded-2xl border border-border/60 bg-background/40 p-4">
+              <div className="mb-2 text-lg font-black text-foreground">WhatsApp Parent Desk</div>
+              <p className="text-sm leading-6 text-muted-foreground">Need quick help interpreting one of your child&apos;s scores or technical assistance? Speak directly with our support team on WhatsApp.</p>
+              <Button 
+                onClick={handleOpenWhatsApp} 
+                className="mt-4 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm"
               >
-                Chat on WhatsApp (+234 813 020 2112)
+                <Phone className="mr-2 h-4 w-4" />
+                Message on WhatsApp
               </Button>
             </div>
 
-            <div className="space-y-2.5 pt-1">
-              <div className="flex items-center gap-3 p-3 rounded-xl border border-[#202b43] bg-[#080f22]">
-                <div className="p-2 bg-[#0c2438] text-[#58c4e8] rounded-lg">
-                  <Mail className="h-4 w-4" />
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-background/40 p-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Mail className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-foreground">Email Support</div>
+                    <div className="text-xs text-muted-foreground">support@eclatapp.xyz</div>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-white">Email Inquiries</p>
-                  <p className="text-[11px] text-slate-400">support@eclatapp.xyz</p>
-                </div>
+                <Button 
+                  variant="ghost" 
+                  onClick={() => {
+                    const el = document.getElementById("support-message-form");
+                    if (el) el.scrollIntoView({ behavior: "smooth" });
+                  }} 
+                  className="text-xs font-black uppercase tracking-[0.18em] text-primary"
+                >
+                  Write
+                </Button>
               </div>
-              <div className="flex items-center gap-3 p-3 rounded-xl border border-[#202b43] bg-[#080f22]">
-                <div className="p-2 bg-[#0c2438] text-[#58c4e8] rounded-lg">
-                  <Phone className="h-4 w-4" />
+
+              <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-background/40 p-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Phone className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-foreground">Direct Telephone</div>
+                    <div className="text-xs text-muted-foreground">+234 813 020 2112</div>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-white">Helpline</p>
-                  <p className="text-[11px] text-slate-400">+234 813 020 2112 (Mon - Fri)</p>
-                </div>
+                <Button 
+                  variant="ghost" 
+                  onClick={() => window.open("tel:+2348130202112")} 
+                  className="text-xs font-black uppercase tracking-[0.18em] text-primary"
+                >
+                  Call
+                </Button>
               </div>
             </div>
           </Card>
 
-          {/* Quick Inquiry Form */}
-          <Card className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100 p-5">
-            <h3 className="text-base font-bold text-[#71c9ed] mb-1">Send a Message</h3>
-            <p className="text-xs text-slate-400 mb-3">Questions about your subscription or features?</p>
-            <form onSubmit={handleSendSupport} className="space-y-3">
-              <Textarea
-                value={supportMessage}
-                onChange={(e) => setSupportMessage(e.target.value)}
-                placeholder="Describe your inquiry here..."
-                className="min-h-[100px] rounded-xl border-[#26344d] bg-[#080f22] text-xs text-slate-200 placeholder:text-slate-400 focus:border-[#3bc2f3]"
+          <Card id="support-message-form" className="parent-panel rounded-[1.75rem] border border-border/60 bg-card/60 p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h3 className="text-2xl font-black text-foreground">Send a Message</h3>
+              <div className="rounded-full border border-border/60 bg-background/40 px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Priority Ticket</div>
+            </div>
+            <form onSubmit={handleSendSupport} className="mt-4 space-y-4">
+              <Textarea 
+                value={supportMessage} 
+                onChange={(e) => setSupportMessage(e.target.value)} 
+                placeholder="Describe your issue or question regarding your child's learning or account..." 
+                className="min-h-[110px] rounded-2xl border-border/60 bg-background/40 text-sm" 
               />
-              <Button
-                type="submit"
-                disabled={sendingSupport || !supportMessage.trim()}
-                className="w-full bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff] font-semibold text-xs rounded-xl h-9"
-              >
-                {sendingSupport ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...
-                  </>
-                ) : (
-                  "Submit Inquiry"
-                )}
+              <Button type="submit" disabled={sendingSupport || !supportMessage.trim()} className="w-full rounded-xl bg-primary text-primary-foreground font-black text-sm h-11">
+                {sendingSupport ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending Message...</> : 'Submit Support Message'}
               </Button>
             </form>
+            <div className="mt-4 flex items-center justify-between border-t border-border/60 pt-4 text-xs text-muted-foreground">
+              <span className="flex items-center gap-2"><Mail className="h-3.5 w-3.5" /> support@eclatapp.xyz</span>
+              <span className="flex items-center gap-2"><Phone className="h-3.5 w-3.5" /> +234 813 020 2112</span>
+            </div>
           </Card>
         </div>
       </div>

@@ -33,6 +33,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { AddQuestionDialog } from "@/components/admin/AddQuestionDialog";
 import { EditQuestionDialog } from "@/components/admin/EditQuestionDialog";
 import { DuplicateQuestionsModal } from "@/components/admin/DuplicateQuestionsModal";
+import { useSubjects } from "@/hooks/useSubjects";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -70,7 +71,9 @@ export default function QuestionBankPage() {
     const [loading, setLoading] = useState(true);
     const [classYear, setClassYear] = useState<"year_6" | "year_9">("year_6");
     const [subjectFilter, setSubjectFilter] = useState<string>("all");
+    const { subjects: availableSubjects } = useSubjects({ classYear, onlyActive: false });
     const [searchQuery, setSearchQuery] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
     const [difficultyFilter, setDifficultyFilter] = useState<string>("all");
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [editQuestion, setEditQuestion] = useState<{ id: string; classYear: "year_6" | "year_9" } | null>(null);
@@ -82,16 +85,23 @@ export default function QuestionBankPage() {
     const [totalPages, setTotalPages] = useState(1);
     const [totalItems, setTotalItems] = useState(0);
 
+    // Debounce search query input to avoid spamming database
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchQuery.trim());
+            setCurrentPage(1);
+        }, 400);
+
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
+
     const fetchDuplicateCount = useCallback(async () => {
         try {
-            const { data, error } = await supabase.rpc("find_duplicate_question_clusters", {
+            const { data, error } = await supabase.rpc("count_duplicate_question_clusters" as any, {
                 p_class_year: classYear,
-                p_subject: null,
-                p_match_type: "all",
-                p_threshold: 0.85,
             });
-            if (!error && Array.isArray(data)) {
-                setDuplicateClusterCount(data.length);
+            if (!error && typeof data === "number") {
+                setDuplicateClusterCount(data);
             }
         } catch (err) {
             console.error("Error checking duplicate count:", err);
@@ -123,9 +133,8 @@ export default function QuestionBankPage() {
                 query = query.eq("difficulty", difficultyFilter);
             }
 
-            if (searchQuery) {
-                // Search in question_text or topic
-                query = query.or(`question_text.ilike.%${searchQuery}%,topic.ilike.%${searchQuery}%`);
+            if (debouncedSearch) {
+                query = query.or(`question_text.ilike.%${debouncedSearch}%,topic.ilike.%${debouncedSearch}%`);
             }
 
             const { data, error, count } = await query;
@@ -143,17 +152,9 @@ export default function QuestionBankPage() {
         } finally {
             setLoading(false);
         }
-    }, [classYear, currentPage, difficultyFilter, searchQuery, subjectFilter]);
+    }, [classYear, currentPage, difficultyFilter, debouncedSearch, subjectFilter]);
 
-    // Debounce search
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            fetchQuestions();
-        }, 500);
-
-        return () => clearTimeout(timer);
-    }, [fetchQuestions]);
-
+    // Single unified effect for fetching questions
     useEffect(() => {
         fetchQuestions();
     }, [fetchQuestions]);
@@ -313,11 +314,11 @@ export default function QuestionBankPage() {
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Subjects</SelectItem>
-                        <SelectItem value="Mathematics">Mathematics</SelectItem>
-                        <SelectItem value="English Language">English Language</SelectItem>
-                        <SelectItem value="General Paper">General Paper</SelectItem>
-                        <SelectItem value="Basic Science">Basic Science</SelectItem>
-                        <SelectItem value="Social Studies">Social Studies</SelectItem>
+                        {availableSubjects.map((sub) => (
+                            <SelectItem key={sub.id} value={sub.name}>
+                                {sub.icon} {sub.name}
+                            </SelectItem>
+                        ))}
                     </SelectContent>
                 </Select>
             </div>

@@ -21,6 +21,14 @@ export interface Assignment {
     score?: number;
     created_at: string;
     completed_at?: string;
+    questions_snapshot?: {
+        questions: any[];
+        userResponses: (number | null)[];
+        answers: boolean[];
+        score?: number;
+        totalQuestions?: number;
+        completedAt?: string;
+    } | null;
 }
 
 export interface ChildAnalytics {
@@ -29,8 +37,15 @@ export interface ChildAnalytics {
     totalQuizzes: number;
     subjectPerformance: { subject: string; avgScore: number; count: number }[];
     recentQuizzes: QuizResult[];
-    pendingAssignments?: number;
-    completedAssignments?: number;
+    lifetimeEP?: number;
+    currentLevel?: number;
+    levelTitle?: string;
+    leagueTier?: number;
+    leagueName?: string;
+    streakCount?: number;
+    streakShields?: number;
+    strongTopicsCount?: number;
+    weakTopicsCount?: number;
 }
 
 export interface LinkedChild {
