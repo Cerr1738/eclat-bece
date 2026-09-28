@@ -31,24 +31,24 @@ export function DeleteChildDialog({
 
     return (
         <AlertDialog open={isOpen} onOpenChange={onOpenChange}>
-            <AlertDialogContent className="rounded-[2.5rem] border-2 border-destructive/20 p-8 max-w-lg">
-                <AlertDialogHeader className="space-y-4">
-                    <div className="w-16 h-16 bg-destructive/10 rounded-3xl flex items-center justify-center mb-2">
-                        <Trash2 className="h-8 w-8 text-destructive" />
+            <AlertDialogContent className="rounded-2xl border border-rose-500/20 bg-[#0c1628] text-slate-100 p-6 sm:p-8 max-w-lg shadow-2xl">
+                <AlertDialogHeader className="space-y-3">
+                    <div className="w-12 h-12 bg-rose-500/10 rounded-2xl flex items-center justify-center mb-1 text-rose-400">
+                        <Trash2 className="h-6 w-6" />
                     </div>
-                    <AlertDialogTitle className="text-3xl font-black tracking-tight text-foreground">
+                    <AlertDialogTitle className="text-2xl font-bold tracking-tight text-white">
                         Delete Student Account?
                     </AlertDialogTitle>
-                    <AlertDialogDescription className="text-base font-medium leading-relaxed text-muted-foreground">
+                    <AlertDialogDescription className="text-sm font-medium leading-relaxed text-slate-400">
                         This will permanently delete all data, including quiz results, progress, and account access for{" "}
-                        <strong className="text-foreground font-black underline decoration-primary/30 underline-offset-4">{child.profile.full_name}</strong>.
+                        <strong className="text-white font-bold">{child.profile.full_name}</strong>.
                         <br /><br />
-                        This action <span className="text-destructive font-black uppercase tracking-wider">cannot be undone</span>.
+                        This action <span className="text-rose-400 font-bold uppercase tracking-wider">cannot be undone</span>.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
-                <AlertDialogFooter className="mt-10 gap-3 sm:flex-row flex-col">
+                <AlertDialogFooter className="mt-8 gap-3 sm:flex-row flex-col">
                     <AlertDialogCancel asChild>
-                        <Button variant="outline" className="flex-1 rounded-2xl font-bold border-2 h-14 hover:bg-muted transition-all">
+                        <Button variant="outline" className="flex-1 rounded-xl font-semibold border border-[#233148] bg-[#080f22] text-slate-200 hover:bg-[#15273f] hover:border-[#3bc2f3] hover:text-white h-12 transition-all">
                             Keep Account
                         </Button>
                     </AlertDialogCancel>
@@ -60,11 +60,11 @@ export function DeleteChildDialog({
                                 onConfirm();
                             }}
                             disabled={isDeleting}
-                            className="flex-1 rounded-2xl font-black bg-destructive hover:bg-destructive/90 text-white shadow-lg shadow-destructive/20 h-14 transition-all"
+                            className="flex-1 rounded-xl font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/20 h-12 transition-all"
                         >
                             {isDeleting ? (
                                 <>
-                                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                     Deleting...
                                 </>
                             ) : (

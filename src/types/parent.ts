@@ -29,6 +29,8 @@ export interface ChildAnalytics {
     totalQuizzes: number;
     subjectPerformance: { subject: string; avgScore: number; count: number }[];
     recentQuizzes: QuizResult[];
+    pendingAssignments?: number;
+    completedAssignments?: number;
 }
 
 export interface LinkedChild {

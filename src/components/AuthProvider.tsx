@@ -16,23 +16,35 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
     const [loading, setLoading] = useState(true);
-    // We can't use useNavigate here because AuthProvider is usually outside Router
-    // But if we put it inside Router in App.tsx, we can.
-    // For now, we'll handle navigation in the signOut function or components.
 
     useEffect(() => {
         // Check active session
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            setUser(session?.user ?? null);
+        supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+            setSession(currentSession);
+            setUser(currentSession?.user ?? null);
             setLoading(false);
         });
 
         // Listen for changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            (_event, session) => {
-                setSession(session);
-                setUser(session?.user ?? null);
+            (_event, newSession) => {
+                setSession((prevSession) => {
+                    if (!prevSession && !newSession) return null;
+                    if (prevSession?.access_token === newSession?.access_token) {
+                        return prevSession; // Preserve stable session reference
+                    }
+                    return newSession;
+                });
+
+                setUser((prevUser) => {
+                    const nextUser = newSession?.user ?? null;
+                    if (!prevUser && !nextUser) return null;
+                    if (prevUser && nextUser && prevUser.id === nextUser.id && prevUser.updated_at === nextUser.updated_at) {
+                        return prevUser; // Preserve stable user reference
+                    }
+                    return nextUser;
+                });
+
                 setLoading(false);
             }
         );
@@ -41,11 +53,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }, []);
 
     const signOut = async () => {
+        // Preserve user theme preference
+        const savedTheme = localStorage.getItem("theme");
+
         await supabase.auth.signOut();
+
+        // Clear session storage
+        sessionStorage.clear();
+
+        // Selectively clean up auth storage while preserving user settings
+        Object.keys(localStorage).forEach((key) => {
+            if (key !== "theme" && (key.startsWith("sb-") || key.includes("supabase") || key === "pendingRole" || key === "pendingSchoolName")) {
+                localStorage.removeItem(key);
+            }
+        });
+
+        if (savedTheme) {
+            localStorage.setItem("theme", savedTheme);
+        }
+
         setUser(null);
         setSession(null);
         // Navigation should be handled by the component calling signOut
-        // or we can use window.location.href = "/" if needed, but better to let consumer handle it.
     };
 
     return (

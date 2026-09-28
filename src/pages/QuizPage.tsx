@@ -8,6 +8,7 @@ import { CheckCircle2, XCircle, Trophy, ArrowLeft, ArrowRight, Loader2, Flag } f
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   Dialog,
   DialogContent,
@@ -73,7 +74,8 @@ export default function QuizPage() {
   const [submittingFlag, setSubmittingFlag] = useState(false);
 
   const handleFlagQuestion = async () => {
-    if (!user || !question) return;
+    const currentQ = questions[currentQuestion];
+    if (!user || !currentQ) return;
     if (!flagReason) {
       toast.error("Please select a reason for flagging.");
       return;
@@ -99,10 +101,10 @@ export default function QuizPage() {
         .insert({
           student_id: studentData.id,
           class_year: studentData.class_year,
-          question_id: question.id,
-          subject: question.subject,
+          question_id: currentQ.id,
+          subject: currentQ.subject,
           topic: topic || "Mixed Topics",
-          question_text: question.question,
+          question_text: currentQ.question,
           reason: flagReason,
           details: flagDetails.trim() || null,
         });
@@ -110,7 +112,7 @@ export default function QuizPage() {
       if (error) throw error;
 
       toast.success("Thank you! Question has been flagged for admin review. 🎉");
-      setFlaggedQuestionIds(prev => [...prev, question.id]);
+      setFlaggedQuestionIds(prev => [...prev, currentQ.id]);
       setFlagDialogOpen(false);
       setFlagReason("");
       setFlagDetails("");
@@ -216,33 +218,45 @@ export default function QuizPage() {
         // Randomly shuffle and select questions based on limit
         const shuffled = [...allQuestions].sort(() => Math.random() - 0.5);
         const questionsData = shuffled.slice(0, Math.min(fetchLimit, shuffled.length));
+        const questionIds = questionsData.map((q: any) => q.id);
 
-        // Fetch options for each question
-        const questionsWithOptions = await Promise.all(
-          questionsData.map(async (q: any) => {
-            const { data: optionsData } = await supabase
-              .from(optionsTableName as any)
-              .select("*")
-              .eq("question_id", q.id)
-              .order("display_order");
+        // Fetch all options for selected questions in a single batched query
+        const { data: allOptionsData, error: optionsError } = await supabase
+          .from(optionsTableName as any)
+          .select("*")
+          .in("question_id", questionIds)
+          .order("display_order");
 
-            const correctOptionIndex = optionsData?.findIndex((opt: any) => opt.is_correct) ?? 0;
+        if (optionsError) {
+          console.error("Error fetching options:", optionsError);
+        }
 
-            return {
-              id: q.id,
-              question: q.question_text,
-              options: optionsData?.map((opt: any) => ({
-                text: opt.option_text,
-                image_url: opt.image_url || null
-              })) || [],
-              correctAnswer: correctOptionIndex,
-              explanation: q.explanation || "No explanation available.",
-              subject: q.subject,
-              passage: q.passage || null,
-              image_url: q.image_url || null,
-            };
-          })
-        );
+        const optionsByQuestion = (allOptionsData || []).reduce((acc: Record<string, any[]>, opt: any) => {
+          if (!acc[opt.question_id]) {
+            acc[opt.question_id] = [];
+          }
+          acc[opt.question_id].push(opt);
+          return acc;
+        }, {});
+
+        const questionsWithOptions = questionsData.map((q: any) => {
+          const optionsData = optionsByQuestion[q.id] || [];
+          const correctOptionIndex = optionsData.findIndex((opt: any) => opt.is_correct);
+
+          return {
+            id: q.id,
+            question: q.question_text,
+            options: optionsData.map((opt: any) => ({
+              text: opt.option_text,
+              image_url: opt.image_url || null
+            })),
+            correctAnswer: correctOptionIndex >= 0 ? correctOptionIndex : 0,
+            explanation: q.explanation || "No explanation available.",
+            subject: q.subject,
+            passage: q.passage || null,
+            image_url: q.image_url || null,
+          };
+        });
 
         setQuestions(questionsWithOptions);
       } catch (error) {
@@ -408,7 +422,10 @@ export default function QuizPage() {
     const isPassed = percentage >= 50;
 
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
+        <div className="absolute right-4 top-4">
+          <ThemeToggle />
+        </div>
         <Card className="w-full max-w-2xl p-8 text-center animate-scale-in">
           <div className="mb-6">
             <Trophy className={`w-20 h-20 mx-auto mb-4 ${isPassed ? 'text-primary' : 'text-muted-foreground'}`} />
@@ -459,13 +476,15 @@ export default function QuizPage() {
     <div className="min-h-screen bg-background p-4 pt-20">
       <div className="max-w-3xl mx-auto">
         <div className="mb-6">
-          <Button
-            variant="ghost"
-            onClick={() => navigate("/dashboard/student")}
-            className="mb-4"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
-          </Button>
+          <div className="flex items-center justify-between mb-4">
+            <Button
+              variant="ghost"
+              onClick={() => navigate("/dashboard/student")}
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+            </Button>
+            <ThemeToggle />
+          </div>
 
           <div className="flex justify-between items-center mb-2">
             <div className="flex items-center gap-2">

@@ -63,43 +63,43 @@ export function DummyPaymentModal({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[425px] rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100 shadow-2xl">
                 <DialogHeader>
-                    <div className="mx-auto bg-primary/10 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                        <Zap className="h-6 w-6 text-primary" />
+                    <div className="mx-auto bg-[#0c2438] w-12 h-12 rounded-2xl flex items-center justify-center mb-3 text-[#58c4e8]">
+                        <Zap className="h-6 w-6 text-[#3bc2f3]" />
                     </div>
-                    <DialogTitle className="text-center text-xl">Unlock Premium Features</DialogTitle>
-                    <DialogDescription className="text-center">
-                        Upgrade {studentName}'s account for unlimited practice questions and detailed analytics.
+                    <DialogTitle className="text-center text-xl font-bold text-white">Unlock Premium Features</DialogTitle>
+                    <DialogDescription className="text-center text-slate-400 text-xs sm:text-sm">
+                        Upgrade <strong className="text-white font-semibold">{studentName}</strong>'s account for unlimited practice questions and detailed analytics.
                     </DialogDescription>
                 </DialogHeader>
-                <div className="py-6">
-                    <div className="bg-muted p-4 rounded-lg flex justify-between items-center">
+                <div className="py-4 space-y-4">
+                    <div className="bg-[#080f22] p-4 rounded-xl border border-[#202b43] flex justify-between items-center">
                         <div>
-                            <p className="font-medium text-foreground">1 Year Subscription</p>
-                            <p className="text-sm text-muted-foreground">Billed annually</p>
+                            <p className="font-semibold text-white text-sm">1 Year Subscription</p>
+                            <p className="text-xs text-slate-400">Billed annually</p>
                         </div>
-                        <p className="text-2xl font-bold">₦15,000</p>
+                        <p className="text-2xl font-black text-[#3bc2f3]">₦15,000</p>
                     </div>
-                    <div className="mt-4 text-center">
-                        <p className="text-sm text-yellow-600 dark:text-yellow-500 bg-yellow-100 dark:bg-yellow-900/30 p-2 rounded inline-block">
+                    <div className="text-center">
+                        <p className="text-xs text-amber-300 bg-amber-950/40 border border-amber-800/40 p-2.5 rounded-xl inline-block leading-relaxed">
                             Notice: This is a dummy payment process for testing. No real charges will be made.
                         </p>
                     </div>
                 </div>
-                <DialogFooter className="sm:justify-between">
+                <DialogFooter className="sm:justify-between flex gap-2 pt-2">
                     <Button
-                        variant="ghost"
+                        variant="outline"
                         onClick={() => onOpenChange(false)}
                         disabled={isProcessing}
+                        className="rounded-xl font-semibold border border-[#233148] bg-[#080f22] text-slate-200 hover:bg-[#15273f] hover:border-[#3bc2f3] hover:text-white h-11 px-5"
                     >
                         Cancel
                     </Button>
                     <Button
-                        variant="hero"
                         onClick={handlePayment}
                         disabled={isProcessing}
-                        className="gap-2"
+                        className="rounded-xl font-bold h-11 px-6 bg-[#3bc2f3] text-slate-950 hover:bg-[#32ade0] shadow-md shadow-cyan-500/10 gap-2"
                     >
                         {isProcessing ? (
                             <>
