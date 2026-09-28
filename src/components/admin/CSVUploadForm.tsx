@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Papa from "papaparse";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { Loader2, Upload, FileText, AlertCircle, CheckCircle2 } from "lucide-rea
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { useSubjects } from "@/hooks/useSubjects";
 
 interface CSVRow {
     subject: string;
@@ -45,7 +46,18 @@ export function CSVUploadForm({ onSuccess }: CSVUploadFormProps) {
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<ValidationError[]>([]);
     const [uploadSummary, setUploadSummary] = useState<{ success: number; failed: number } | null>(null);
+    const [duplicateInfo, setDuplicateInfo] = useState<{
+        duplicateCount: number;
+        duplicateRows: Set<string>;
+        validRows: CSVRow[];
+    } | null>(null);
     const { user } = useAuth();
+    const { subjects } = useSubjects({ classYear, onlyActive: false });
+    const validSubjectMap = useMemo(() => {
+        const map = new Map<string, string>();
+        subjects.forEach((s) => map.set(s.name.toLowerCase(), s.name));
+        return map;
+    }, [subjects]);
 
     const validateCSVRow = (row: CSVRow, rowIndex: number): ValidationError[] => {
         const errors: ValidationError[] = [];
@@ -53,6 +65,12 @@ export function CSVUploadForm({ onSuccess }: CSVUploadFormProps) {
         // Check required fields
         if (!row.subject?.trim()) {
             errors.push({ row: rowIndex, field: "subject", message: "Subject is required" });
+        } else if (validSubjectMap.size > 0 && !validSubjectMap.has(row.subject.trim().toLowerCase())) {
+            errors.push({
+                row: rowIndex,
+                field: "subject",
+                message: `Subject "${row.subject}" is not configured for ${classYear === "year_6" ? "Year 6" : "Year 9"}. (Configured: ${subjects.map(s => s.name).join(", ")})`
+            });
         }
         if (!row.question_text?.trim()) {
             errors.push({ row: rowIndex, field: "question_text", message: "Question text is required" });
@@ -103,6 +121,7 @@ export function CSVUploadForm({ onSuccess }: CSVUploadFormProps) {
             setFile(selectedFile);
             setErrors([]);
             setUploadSummary(null);
+            setDuplicateInfo(null);
         }
     };
 
@@ -145,7 +164,35 @@ export function CSVUploadForm({ onSuccess }: CSVUploadFormProps) {
                         return;
                     }
 
-                    // Upload valid questions
+                    // Pre-check for duplicate questions against existing database
+                    const tableName = classYear === 'year_6' ? 'quiz_questions_year6' : 'quiz_questions_year9';
+                    const candidateTexts = validRows.map(r => r.question_text.trim());
+                    const existingDuplicates = new Set<string>();
+
+                    for (let i = 0; i < candidateTexts.length; i += 100) {
+                        const chunk = candidateTexts.slice(i, i + 100);
+                        const { data: matched } = await supabase
+                            .from(tableName as any)
+                            .select('question_text')
+                            .in('question_text', chunk);
+
+                        if (matched) {
+                            matched.forEach((m: any) => existingDuplicates.add(m.question_text.trim().toLowerCase()));
+                        }
+                    }
+
+                    if (existingDuplicates.size > 0) {
+                        const dupCount = validRows.filter(r => existingDuplicates.has(r.question_text.trim().toLowerCase())).length;
+                        setDuplicateInfo({
+                            duplicateCount: dupCount,
+                            duplicateRows: existingDuplicates,
+                            validRows: validRows
+                        });
+                        setLoading(false);
+                        return;
+                    }
+
+                    // No duplicates found, upload all valid questions
                     await uploadQuestions(validRows);
                 },
                 error: (error) => {
@@ -167,51 +214,63 @@ export function CSVUploadForm({ onSuccess }: CSVUploadFormProps) {
 
         let successCount = 0;
         let failCount = 0;
+        const BATCH_SIZE = 10;
 
-        for (const row of rows) {
-            try {
-                // Insert question
-                const { data: questionData, error: questionError } = await supabase
-                    .from(tableName)
-                    .insert({
-                        subject: row.subject.trim(),
-                        topic: row.topic?.trim() || null,
-                        question_text: row.question_text.trim(),
-                        correct_answer: row[`option_${row.correct_option}` as keyof CSVRow],
-                        explanation: row.explanation?.trim() || null,
-                        difficulty: row.difficulty?.toLowerCase() || "medium",
-                    })
-                    .select()
-                    .single();
+        // Process in chunked concurrent batches for high throughput and fault isolation
+        for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+            const batch = rows.slice(i, i + BATCH_SIZE);
+            const batchResults = await Promise.allSettled(
+                batch.map(async (row) => {
+                    // Insert question
+                    const canonicalSubject = validSubjectMap.get(row.subject.trim().toLowerCase()) || row.subject.trim();
+                    const { data: questionData, error: questionError } = await supabase
+                        .from(tableName)
+                        .insert({
+                            subject: canonicalSubject,
+                            topic: row.topic?.trim() || null,
+                            question_text: row.question_text.trim(),
+                            correct_answer: row[`option_${row.correct_option}` as keyof CSVRow],
+                            explanation: row.explanation?.trim() || null,
+                            difficulty: row.difficulty?.toLowerCase() || "medium",
+                        })
+                        .select()
+                        .single();
 
-                if (questionError) throw questionError;
+                    if (questionError || !questionData) {
+                        throw questionError || new Error("Failed to insert question");
+                    }
 
-                // Insert options
-                const options = [
-                    { text: row.option_1.trim(), isCorrect: row.correct_option === "1" },
-                    { text: row.option_2.trim(), isCorrect: row.correct_option === "2" },
-                    { text: row.option_3.trim(), isCorrect: row.correct_option === "3" },
-                    { text: row.option_4.trim(), isCorrect: row.correct_option === "4" },
-                ];
+                    // Insert options
+                    const options = [
+                        { text: row.option_1.trim(), isCorrect: row.correct_option === "1" },
+                        { text: row.option_2.trim(), isCorrect: row.correct_option === "2" },
+                        { text: row.option_3.trim(), isCorrect: row.correct_option === "3" },
+                        { text: row.option_4.trim(), isCorrect: row.correct_option === "4" },
+                    ];
 
-                const optionsToInsert = options.map((opt, index) => ({
-                    question_id: questionData.id,
-                    option_text: opt.text,
-                    is_correct: opt.isCorrect,
-                    display_order: index,
-                }));
+                    const optionsToInsert = options.map((opt, index) => ({
+                        question_id: questionData.id,
+                        option_text: opt.text,
+                        is_correct: opt.isCorrect,
+                        display_order: index,
+                    }));
 
-                const { error: optionsError } = await supabase
-                    .from(optionsTableName)
-                    .insert(optionsToInsert);
+                    const { error: optionsError } = await supabase
+                        .from(optionsTableName)
+                        .insert(optionsToInsert);
 
-                if (optionsError) throw optionsError;
+                    if (optionsError) throw optionsError;
+                })
+            );
 
-                successCount++;
-            } catch (error) {
-                console.error("Error uploading question:", error);
-                failCount++;
-            }
+            batchResults.forEach((res) => {
+                if (res.status === "fulfilled") {
+                    successCount++;
+                } else {
+                    console.error("Error uploading question in batch:", res.reason);
+                    failCount++;
+                }
+            });
         }
 
         // Log admin action
@@ -318,19 +377,80 @@ export function CSVUploadForm({ onSuccess }: CSVUploadFormProps) {
                 </Alert>
             )}
 
-            <Button
-                onClick={handleUpload}
-                disabled={!file || loading}
-                className="w-full"
-            >
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {loading ? "Uploading..." : (
-                    <>
-                        <Upload className="mr-2 h-4 w-4" />
-                        Upload Questions
-                    </>
-                )}
-            </Button>
+            {duplicateInfo && (
+                <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200">
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="space-y-3">
+                        <div>
+                            <div className="font-semibold text-amber-900 dark:text-amber-100">
+                                Duplicate Questions Detected
+                            </div>
+                            <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                                Found <strong>{duplicateInfo.duplicateCount}</strong> question(s) in this CSV that already exist in the {classYear === 'year_6' ? 'Year 6' : 'Year 9'} Question Bank.
+                            </p>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                            <Button
+                                size="sm"
+                                className="bg-amber-700 hover:bg-amber-800 text-white text-xs"
+                                onClick={async () => {
+                                    const filtered = duplicateInfo.validRows.filter(
+                                        r => !duplicateInfo.duplicateRows.has(r.question_text.trim().toLowerCase())
+                                    );
+                                    setDuplicateInfo(null);
+                                    setLoading(true);
+                                    await uploadQuestions(filtered);
+                                }}
+                                disabled={loading}
+                            >
+                                Skip {duplicateInfo.duplicateCount} Duplicates & Upload ({duplicateInfo.validRows.length - duplicateInfo.duplicateCount})
+                            </Button>
+
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs border-amber-400 dark:border-amber-700"
+                                onClick={async () => {
+                                    const allRows = duplicateInfo.validRows;
+                                    setDuplicateInfo(null);
+                                    setLoading(true);
+                                    await uploadQuestions(allRows);
+                                }}
+                                disabled={loading}
+                            >
+                                Upload All Anyway ({duplicateInfo.validRows.length})
+                            </Button>
+
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-xs text-muted-foreground"
+                                onClick={() => setDuplicateInfo(null)}
+                                disabled={loading}
+                            >
+                                Cancel
+                            </Button>
+                        </div>
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {!duplicateInfo && (
+                <Button
+                    onClick={handleUpload}
+                    disabled={!file || loading}
+                    className="w-full"
+                >
+                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {loading ? "Checking & Uploading..." : (
+                        <>
+                            <Upload className="mr-2 h-4 w-4" />
+                            Upload Questions
+                        </>
+                    )}
+                </Button>
+            )}
         </div>
     );
 }

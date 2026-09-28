@@ -16,8 +16,10 @@ import { EditChildUsernameDialog } from "@/components/parent/EditChildUsernameDi
 import { ChangeChildPasswordDialog } from "@/components/parent/ChangeChildPasswordDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useParentAccount } from "@/hooks/useParentAccount";
 import { LinkedChild, ChildAnalytics, Assignment, QuizResult } from "@/types/parent";
 import { getEdgeFunctionError } from "@/lib/errorUtils";
+import { QuestionSnapshotDialog } from "@/components/quiz/QuestionSnapshotDialog";
 
 const getErrorMessage = (error: unknown, fallback: string) =>
     error instanceof Error ? error.message : fallback;
@@ -25,11 +27,13 @@ const getErrorMessage = (error: unknown, fallback: string) =>
 export default function MyChildren() {
     const navigate = useNavigate();
     const { user } = useAuth();
+    const { parentId, loading: parentAccountLoading } = useParentAccount();
 
     const [children, setChildren] = useState<LinkedChild[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [parentUserId, setParentUserId] = useState<string | null>(null);
     const [childrenAnalytics, setChildrenAnalytics] = useState<Map<string, ChildAnalytics>>(new Map());
+    const [childrenAssignments, setChildrenAssignments] = useState<Map<string, Assignment[]>>(new Map());
 
     const [reportOpen, setReportOpen] = useState(false);
     const [assignOpen, setAssignOpen] = useState(false);
@@ -40,138 +44,212 @@ export default function MyChildren() {
     const [editUsernameOpen, setEditUsernameOpen] = useState(false);
     const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
+    // Review Assignment Snapshot State
+    const [reviewModalOpen, setReviewModalOpen] = useState(false);
+    const [reviewSnapshot, setReviewSnapshot] = useState<{
+        questions: any[];
+        userResponses: (number | null)[];
+        answers: boolean[];
+        subjectName: string;
+        childName: string;
+    } | null>(null);
+
+    const handleReviewAssignment = async (assignment: Assignment, childName: string) => {
+        if (assignment.questions_snapshot?.questions?.length) {
+            const snap = assignment.questions_snapshot;
+            const sortedQuestions = [...snap.questions].sort((a: any, b: any) => {
+                const orderA = a.question_number ?? a.original_order ?? 0;
+                const orderB = b.question_number ?? b.original_order ?? 0;
+                return orderA - orderB;
+            });
+
+            const sortedAnswers = sortedQuestions.map((q: any, i: number) =>
+                q.isCorrect !== undefined ? q.isCorrect : (snap.answers?.[i] ?? false)
+            );
+            const sortedResponses = sortedQuestions.map((q: any, i: number) =>
+                q.userResponse !== undefined ? q.userResponse : (snap.userResponses?.[i] ?? null)
+            );
+
+            setReviewSnapshot({
+                questions: sortedQuestions,
+                userResponses: sortedResponses,
+                answers: sortedAnswers,
+                subjectName: assignment.subject,
+                childName,
+            });
+            setReviewModalOpen(true);
+            return;
+        }
+
+        try {
+            const { data: student } = await supabase
+                .from("students")
+                .select("class_year")
+                .eq("id", assignment.student_id)
+                .maybeSingle();
+
+            const classYear = student?.class_year || "year_6";
+            const tableName = classYear === "year_6" ? "quiz_questions_year6" : "quiz_questions_year9";
+            const optionsTableName = classYear === "year_6" ? "quiz_options_year6" : "quiz_options_year9";
+            const passageTableName = classYear === "year_6" ? "comprehension_passages_year6" : "comprehension_passages_year9";
+
+            let query = supabase.from(tableName).select(`*, passage:${passageTableName}(title, passage_text)`);
+            if (assignment.subject) query = query.eq("subject", assignment.subject);
+            if (assignment.topics?.length) query = query.in("topic", assignment.topics);
+
+            const { data: qData, error: qErr } = await query.limit(assignment.num_questions || 10);
+            if (qErr || !qData || qData.length === 0) {
+                toast.info("No question snapshot found for this assignment.");
+                return;
+            }
+
+            const qIds = qData.map((q: any) => q.id);
+            const { data: optData } = await supabase.from(optionsTableName as any).select("*").in("question_id", qIds).order("display_order");
+            const optMap = (optData || []).reduce((acc: any, opt: any) => {
+                if (!acc[opt.question_id]) acc[opt.question_id] = [];
+                acc[opt.question_id].push(opt);
+                return acc;
+            }, {});
+
+            const fallbackQuestions = qData.map((q: any) => {
+                const opts = optMap[q.id] || [];
+                const corrIdx = opts.findIndex((o: any) => o.is_correct);
+                return {
+                    id: q.id,
+                    question: q.question_text,
+                    options: opts.map((o: any) => ({ text: o.option_text, image_url: o.image_url || null })),
+                    correctAnswer: corrIdx >= 0 ? corrIdx : 0,
+                    explanation: q.explanation || "No explanation provided.",
+                    subject: q.subject,
+                    image_url: q.image_url || null,
+                    passage: q.passage || null,
+                };
+            });
+
+            setReviewSnapshot({
+                questions: fallbackQuestions,
+                userResponses: fallbackQuestions.map((q) => (assignment.score && assignment.score >= 50 ? q.correctAnswer : null)),
+                answers: fallbackQuestions.map(() => true),
+                subjectName: assignment.subject,
+                childName,
+            });
+            setReviewModalOpen(true);
+        } catch (err) {
+            console.error("Error loading assignment review:", err);
+            toast.error("Could not load question snapshot.");
+        }
+    };
+
     const [selectedChild, setSelectedChild] = useState<LinkedChild | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
 
-    const fetchAnalytics = useCallback(async (studentId: string) => {
-        try {
-            const { data: quizResults } = await supabase
-                .from("quiz_results")
-                .select("*")
-                .eq("student_id", studentId)
-                .order("completed_at", { ascending: false });
-
-            if (quizResults && quizResults.length > 0) {
-                const averageScore = quizResults.reduce((acc, result) => acc + result.score, 0) / quizResults.length;
-                const subjectMap = new Map<string, { totalScore: number; count: number }>();
-                quizResults.forEach((result) => {
-                    const existing = subjectMap.get(result.subject) || { totalScore: 0, count: 0 };
-                    subjectMap.set(result.subject, {
-                        totalScore: existing.totalScore + result.score,
-                        count: existing.count + 1,
-                    });
-                });
-
-                const subjectPerformance = Array.from(subjectMap.entries()).map(([subject, data]) => ({
-                    subject: subject.charAt(0).toUpperCase() + subject.slice(1),
-                    avgScore: Math.round(data.totalScore / data.count),
-                    count: data.count,
-                }));
-
-                const analytics: ChildAnalytics = {
-                    studentId,
-                    averageScore: Math.round(averageScore),
-                    totalQuizzes: quizResults.length,
-                    subjectPerformance,
-                    recentQuizzes: quizResults.slice(0, 5) as QuizResult[],
-                };
-                setChildrenAnalytics((prev) => new Map(prev).set(studentId, analytics));
-            }
-        } catch (error) {
-            console.error("Error fetching child analytics:", error);
-        }
-    }, []);
-
-    const fetchAssignments = useCallback(async (studentId: string) => {
-        try {
-            const { data, error } = await supabase
-                .from("practice_assignments")
-                .select("*")
-                .eq("student_id", studentId)
-                .order("created_at", { ascending: false });
-
-            if (error) throw error;
-            if (data) {
-                setChildren((prev) =>
-                    prev.map((c) =>
-                        c.id === studentId ? { ...c, assignments: data as Assignment[] } : c
-                    )
-                );
-
-                const pending = data.filter((a) => a.status === "pending").length;
-                const completed = data.filter((a) => a.status === "completed").length;
-
-                setChildrenAnalytics((prev) => {
-                    const current = prev.get(studentId) || {
-                        studentId,
-                        averageScore: 0,
-                        totalQuizzes: 0,
-                        subjectPerformance: [],
-                        recentQuizzes: [],
-                        pendingAssignments: 0,
-                        completedAssignments: 0,
-                    };
-                    return new Map(prev).set(studentId, {
-                        ...current,
-                        pendingAssignments: pending,
-                        completedAssignments: completed,
-                    });
-                });
-            }
-        } catch (error) {
-            console.error("Error fetching child assignments:", error);
-        }
-    }, []);
-
-    const fetchChildren = useCallback(async (parentId: string) => {
+    const fetchChildren = useCallback(async (pId: string) => {
         try {
             const { data, error } = await supabase
                 .from("students")
                 .select(`
-          id,
-          user_id,
-          class_year,
-          is_premium,
-          profile:profiles(full_name, unique_id, username)
-        `)
-                .eq("parent_id", parentId);
+                    id,
+                    user_id,
+                    class_year,
+                    is_premium,
+                    profile:profiles(full_name, unique_id, username)
+                `)
+                .eq("parent_id", pId);
 
             if (error) throw error;
-            if (data) {
-                setChildren(data as unknown as LinkedChild[]);
-                data.forEach((child) => {
-                    fetchAnalytics(child.id);
-                    fetchAssignments(child.id);
+
+            if (data && data.length > 0) {
+                const studentIds = data.map((c) => c.id);
+
+                // Batched parallel queries for all children
+                const [quizzesRes, assignmentsRes] = await Promise.all([
+                    supabase
+                        .from("quiz_results")
+                        .select("*")
+                        .in("student_id", studentIds)
+                        .order("completed_at", { ascending: false }),
+                    supabase
+                        .from("practice_assignments")
+                        .select("*")
+                        .in("student_id", studentIds)
+                        .order("created_at", { ascending: false }),
+                ]);
+
+                const allQuizzes = (quizzesRes.data || []) as QuizResult[];
+                const allAssignments = (assignmentsRes.data || []) as Assignment[];
+
+                const assignMap = new Map<string, Assignment[]>();
+                const analyticsMap = new Map<string, ChildAnalytics>();
+
+                studentIds.forEach((sId) => {
+                    const childAssignments = allAssignments.filter((a) => a.student_id === sId);
+                    assignMap.set(sId, childAssignments);
+
+                    const childQuizzes = allQuizzes.filter((q) => q.student_id === sId);
+                    const pending = childAssignments.filter((a) => a.status === "pending").length;
+                    const completed = childAssignments.filter((a) => a.status === "completed").length;
+
+                    if (childQuizzes.length > 0) {
+                        const averageScore = childQuizzes.reduce((acc, result) => acc + result.score, 0) / childQuizzes.length;
+                        const subjectMap = new Map<string, { totalScore: number; count: number }>();
+                        childQuizzes.forEach((result) => {
+                            const existing = subjectMap.get(result.subject) || { totalScore: 0, count: 0 };
+                            subjectMap.set(result.subject, {
+                                totalScore: existing.totalScore + result.score,
+                                count: existing.count + 1,
+                            });
+                        });
+
+                        const subjectPerformance = Array.from(subjectMap.entries()).map(([subject, subData]) => ({
+                            subject: subject.charAt(0).toUpperCase() + subject.slice(1),
+                            avgScore: Math.round(subData.totalScore / subData.count),
+                            count: subData.count,
+                        }));
+
+                        analyticsMap.set(sId, {
+                            studentId: sId,
+                            averageScore: Math.round(averageScore),
+                            totalQuizzes: childQuizzes.length,
+                            subjectPerformance,
+                            recentQuizzes: childQuizzes.slice(0, 5) as QuizResult[],
+                            pendingAssignments: pending,
+                            completedAssignments: completed,
+                        });
+                    } else {
+                        analyticsMap.set(sId, {
+                            studentId: sId,
+                            averageScore: 0,
+                            totalQuizzes: 0,
+                            subjectPerformance: [],
+                            recentQuizzes: [],
+                            pendingAssignments: pending,
+                            completedAssignments: completed,
+                        });
+                    }
                 });
+
+                setChildren(data as unknown as LinkedChild[]);
+                setChildrenAssignments(assignMap);
+                setChildrenAnalytics(analyticsMap);
+            } else {
+                setChildren([]);
             }
         } catch (error) {
             console.error("Error fetching children:", error);
             toast.error("Failed to load students");
+        } finally {
+            setIsLoading(false);
         }
-    }, [fetchAnalytics, fetchAssignments]);
+    }, []);
 
     useEffect(() => {
-        const fetchParentData = async () => {
-            if (!user) return;
-            try {
-                const { data: parentData } = await supabase
-                    .from("parents")
-                    .select("id")
-                    .eq("user_id", user.id)
-                    .single();
-
-                if (parentData) {
-                    setParentUserId(parentData.id);
-                    await fetchChildren(parentData.id);
-                }
-            } catch (error) {
-                console.error("Error fetching parent data:", error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchParentData();
-    }, [user, fetchChildren]);
+        if (parentId) {
+            setParentUserId(parentId);
+            fetchChildren(parentId);
+        } else if (!parentAccountLoading) {
+            setIsLoading(false);
+        }
+    }, [parentId, parentAccountLoading, fetchChildren]);
 
     const handleDeleteChild = async () => {
         if (!selectedChild) return;
@@ -274,7 +352,7 @@ export default function MyChildren() {
                             child={child}
                             index={index}
                             analytics={childrenAnalytics.get(child.id)}
-                            assignments={child.assignments}
+                            assignments={childrenAssignments.get(child.id) || []}
                             onViewReport={(c) => {
                                 setSelectedChild(c);
                                 setReportOpen(true);
@@ -303,6 +381,7 @@ export default function MyChildren() {
                                 setSelectedChild(c);
                                 setChangePasswordOpen(true);
                             }}
+                            onReviewAssignment={handleReviewAssignment}
                         />
                     ))}
                 </div>
@@ -384,6 +463,20 @@ export default function MyChildren() {
                 onOpenChange={setChangePasswordOpen}
                 child={selectedChild}
             />
+
+            {/* Question Snapshot Review Dialog for Parent */}
+            {reviewSnapshot && (
+                <QuestionSnapshotDialog
+                    open={reviewModalOpen}
+                    onOpenChange={setReviewModalOpen}
+                    questions={reviewSnapshot.questions}
+                    userResponses={reviewSnapshot.userResponses}
+                    answers={reviewSnapshot.answers}
+                    subjectName={reviewSnapshot.subjectName}
+                    isParentView={true}
+                    childName={reviewSnapshot.childName}
+                />
+            )}
         </div>
     );
 }

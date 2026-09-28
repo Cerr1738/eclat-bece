@@ -1,4 +1,4 @@
-import { Award, BookOpen, Target, MoreVertical, CreditCard, ChevronRight, Trash2, User, Key, Fingerprint, Copy, Check } from "lucide-react";
+import { Award, BookOpen, Target, MoreVertical, CreditCard, ChevronRight, Trash2, User, Key, Fingerprint, Copy, Check, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ interface ChildOverviewCardProps {
     onEditName: (child: LinkedChild) => void;
     onEditUsername: (child: LinkedChild) => void;
     onChangePassword: (child: LinkedChild) => void;
+    onReviewAssignment?: (assignment: Assignment, childName: string) => void;
 }
 
 export function ChildOverviewCard({
@@ -38,7 +39,8 @@ export function ChildOverviewCard({
     onDeleteChild,
     onEditName,
     onEditUsername,
-    onChangePassword
+    onChangePassword,
+    onReviewAssignment
 }: ChildOverviewCardProps) {
     const initials = child.profile.full_name?.charAt(0).toUpperCase() || "?";
 
@@ -196,76 +198,127 @@ export function ChildOverviewCard({
 
             <CardContent className="space-y-5 pt-4">
                 {/* Homework & Assignments Tracking */}
-                {(assignments.length > 0 || !analytics) && (
-                    <div className="space-y-2.5">
-                        <h4 className="font-bold text-[11px] uppercase tracking-wider text-[#71c9ed] flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#58c4e8]" />
-                            Assignments Progress
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <h4 className="font-black text-[11px] uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500/60" />
+                            Homework Progress
                         </h4>
-                        <div className="space-y-2">
-                            {assignments.length > 0 ? (
-                                assignments.map((assignment) => (
-                                    <div key={assignment.id} className="flex items-center justify-between p-3 rounded-xl bg-[#080f22] border border-[#202b43] hover:border-[#384c6e] transition-all">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-lg ${assignment.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-sky-500/10 text-[#58c4e8]'}`}>
-                                                <Target className="h-4 w-4" />
-                                            </div>
-                                            <div>
-                                                <p className="text-xs font-bold text-white mb-0.5">{assignment.subject}</p>
-                                                <p className="text-[10px] text-slate-400">
-                                                    {assignment.num_questions} Questions • {assignment.status === 'completed' ? 'Done' : 'In Progress'}
-                                                </p>
-                                            </div>
+                        {assignments.length > 3 && (
+                            <span className="text-[10px] font-bold text-muted-foreground">Showing 3 of {assignments.length}</span>
+                        )}
+                    </div>
+                    <div className="space-y-2">
+                        {assignments.length > 0 ? (
+                            assignments.slice(0, 3).map((assignment) => (
+                                <div
+                                    key={assignment.id}
+                                    onClick={() => {
+                                        if (assignment.status === 'completed' && onReviewAssignment) {
+                                            onReviewAssignment(assignment, child.profile.full_name || "Child");
+                                        }
+                                    }}
+                                    className={`group/assignment flex items-center justify-between p-3 rounded-2xl bg-muted/20 border border-border/50 hover:border-primary/30 transition-all ${
+                                        assignment.status === 'completed' && onReviewAssignment
+                                            ? 'cursor-pointer hover:bg-muted/30 hover:shadow-sm'
+                                            : ''
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-lg ${assignment.status === 'completed' ? 'bg-emerald-500/10' : 'bg-primary/10 animate-pulse'}`}>
+                                            <Target className={`h-4 w-4 ${assignment.status === 'completed' ? 'text-emerald-600' : 'text-primary'}`} />
                                         </div>
+                                        <div>
+                                            <p className="text-xs font-bold leading-none mb-1">{assignment.subject}</p>
+                                            <p className="text-[10px] text-muted-foreground font-medium">
+                                                {assignment.num_questions} Questions • {assignment.status === 'completed' ? 'Done' : 'In Progress'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
                                         {assignment.status === 'completed' ? (
-                                            <span className="rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 font-bold text-[10px]">
-                                                {assignment.score}%
-                                            </span>
+                                            <>
+                                                <Badge className="bg-emerald-500/10 text-emerald-600 border-none font-black text-[10px]">
+                                                    {assignment.score}%
+                                                </Badge>
+                                                {onReviewAssignment && (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onReviewAssignment(assignment, child.profile.full_name || "Child");
+                                                        }}
+                                                        className="h-7 px-2 text-[10px] font-bold rounded-lg gap-1 border-primary/25 text-primary hover:bg-primary/10 transition-colors shadow-none"
+                                                        title="Review questions and answers"
+                                                    >
+                                                        <Eye className="w-3 h-3" />
+                                                        Review
+                                                    </Button>
+                                                )}
+                                            </>
                                         ) : (
                                             <span className="rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30 px-2 py-0.5 font-bold text-[10px]">
                                                 PENDING
                                             </span>
                                         )}
                                     </div>
-                                ))
-                            ) : (
-                                <div className="text-center py-3 rounded-xl bg-[#080f22] border border-dashed border-[#202b43]">
-                                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">No active assignments</p>
                                 </div>
-                            )}
-                        </div>
+                            ))
+                        ) : (
+                            <div className="text-center py-4 rounded-2xl bg-muted/10 border border-dashed flex flex-col items-center justify-center gap-1.5">
+                                <p className="text-[11px] font-bold text-muted-foreground">No active tasks assigned yet</p>
+                                <Button 
+                                    variant="link" 
+                                    size="sm" 
+                                    onClick={() => onAssignPractice(child)} 
+                                    className="h-auto p-0 text-xs font-bold text-primary hover:underline"
+                                >
+                                    + Assign First Task
+                                </Button>
+                            </div>
+                        )}
                     </div>
-                )}
+                </div>
 
                 {analytics ? (
-                    <div className="space-y-5">
-                        {/* Optimized Metrics Grid */}
-                        <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
-                            <div className="p-3 sm:p-3.5 rounded-2xl bg-[#0c2438] border border-[#1e3857] text-slate-100">
-                                <div className="flex items-center justify-between mb-1">
-                                    <p className="text-[10px] font-bold text-[#58c4e8] uppercase tracking-wider">Avg</p>
-                                    <Award className="h-3.5 w-3.5 text-[#58c4e8]" />
-                                </div>
-                                <p className="text-xl sm:text-2xl font-black text-white tabular-nums">
-                                    {analytics.averageScore}<span className="text-xs font-bold text-slate-400 ml-0.5">%</span>
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        {/* Four Pillars Gamification & Performance Strip (PRD Section 2) */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20">
+                                <p className="text-[9px] font-black uppercase text-amber-500">Level & Points</p>
+                                <p className="text-lg font-black text-foreground">
+                                    Lvl {analytics.currentLevel || 1}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground font-bold">
+                                    {(analytics.lifetimeEP || 0).toLocaleString()} EP
                                 </p>
                             </div>
-                            <div className="p-3 sm:p-3.5 rounded-2xl bg-[#102f2b] border border-[#1a4a42] text-slate-100">
-                                <div className="flex items-center justify-between mb-1">
-                                    <p className="text-[10px] font-bold text-[#48d7b7] uppercase tracking-wider">Quizzes</p>
-                                    <Target className="h-3.5 w-3.5 text-[#48d7b7]" />
-                                </div>
-                                <p className="text-xl sm:text-2xl font-black text-white tabular-nums">
-                                    {analytics.totalQuizzes}
+                            <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20">
+                                <p className="text-[9px] font-black uppercase text-purple-400">League Cohort</p>
+                                <p className="text-sm font-black text-foreground truncate">
+                                    {analytics.leagueName || "Starter"}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground font-bold">
+                                    Tier {analytics.leagueTier || 1}
                                 </p>
                             </div>
-                            <div className="p-3 sm:p-3.5 rounded-2xl bg-[#201d3b] border border-[#3b3260] text-slate-100">
-                                <div className="flex items-center justify-between mb-1">
-                                    <p className="text-[10px] font-bold text-[#c4a9ff] uppercase tracking-wider">Subjects</p>
-                                    <BookOpen className="h-3.5 w-3.5 text-[#c4a9ff]" />
-                                </div>
-                                <p className="text-xl sm:text-2xl font-black text-white tabular-nums">
-                                    {analytics.subjectPerformance.length}
+                            <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
+                                <p className="text-[9px] font-black uppercase text-emerald-500">Conquered</p>
+                                <p className="text-lg font-black text-emerald-500">
+                                    {analytics.strongTopicsCount || 0}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground font-bold">
+                                    Strong Topics
+                                </p>
+                            </div>
+                            <div className="p-3 rounded-2xl bg-orange-500/10 border border-orange-500/20">
+                                <p className="text-[9px] font-black uppercase text-orange-500">Practice Streak</p>
+                                <p className="text-lg font-black text-orange-500">
+                                    {analytics.streakCount || 0}d
+                                </p>
+                                <p className="text-[10px] text-muted-foreground font-bold">
+                                    {analytics.streakShields || 0} Shields
                                 </p>
                             </div>
                         </div>

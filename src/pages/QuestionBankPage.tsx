@@ -23,7 +23,8 @@ import {
     Trash2,
     Edit,
     Filter,
-    Image as ImageIcon
+    Image as ImageIcon,
+    Copy
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -31,6 +32,8 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { AddQuestionDialog } from "@/components/admin/AddQuestionDialog";
 import { EditQuestionDialog } from "@/components/admin/EditQuestionDialog";
+import { DuplicateQuestionsModal } from "@/components/admin/DuplicateQuestionsModal";
+import { useSubjects } from "@/hooks/useSubjects";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -68,15 +71,46 @@ export default function QuestionBankPage() {
     const [loading, setLoading] = useState(true);
     const [classYear, setClassYear] = useState<"year_6" | "year_9">("year_6");
     const [subjectFilter, setSubjectFilter] = useState<string>("all");
+    const { subjects: availableSubjects } = useSubjects({ classYear, onlyActive: false });
     const [searchQuery, setSearchQuery] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
     const [difficultyFilter, setDifficultyFilter] = useState<string>("all");
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [editQuestion, setEditQuestion] = useState<{ id: string; classYear: "year_6" | "year_9" } | null>(null);
+    const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
+    const [duplicateClusterCount, setDuplicateClusterCount] = useState<number | null>(null);
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalItems, setTotalItems] = useState(0);
+
+    // Debounce search query input to avoid spamming database
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchQuery.trim());
+            setCurrentPage(1);
+        }, 400);
+
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
+
+    const fetchDuplicateCount = useCallback(async () => {
+        try {
+            const { data, error } = await supabase.rpc("count_duplicate_question_clusters" as any, {
+                p_class_year: classYear,
+            });
+            if (!error && typeof data === "number") {
+                setDuplicateClusterCount(data);
+            }
+        } catch (err) {
+            console.error("Error checking duplicate count:", err);
+        }
+    }, [classYear]);
+
+    useEffect(() => {
+        fetchDuplicateCount();
+    }, [fetchDuplicateCount]);
 
     const fetchQuestions = useCallback(async () => {
         setLoading(true);
@@ -99,9 +133,8 @@ export default function QuestionBankPage() {
                 query = query.eq("difficulty", difficultyFilter);
             }
 
-            if (searchQuery) {
-                // Search in question_text or topic
-                query = query.or(`question_text.ilike.%${searchQuery}%,topic.ilike.%${searchQuery}%`);
+            if (debouncedSearch) {
+                query = query.or(`question_text.ilike.%${debouncedSearch}%,topic.ilike.%${debouncedSearch}%`);
             }
 
             const { data, error, count } = await query;
@@ -119,17 +152,9 @@ export default function QuestionBankPage() {
         } finally {
             setLoading(false);
         }
-    }, [classYear, currentPage, difficultyFilter, searchQuery, subjectFilter]);
+    }, [classYear, currentPage, difficultyFilter, debouncedSearch, subjectFilter]);
 
-    // Debounce search
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            fetchQuestions();
-        }, 500);
-
-        return () => clearTimeout(timer);
-    }, [fetchQuestions]);
-
+    // Single unified effect for fetching questions
     useEffect(() => {
         fetchQuestions();
     }, [fetchQuestions]);
@@ -235,7 +260,22 @@ export default function QuestionBankPage() {
                         Manage quiz questions for Year 6 and Year 9 students.
                     </p>
                 </div>
-                <AddQuestionDialog onSuccess={fetchQuestions} />
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        className="border-amber-300 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-800 dark:text-amber-300 font-medium"
+                        onClick={() => setShowDuplicatesModal(true)}
+                    >
+                        <Copy className="h-4 w-4 mr-1.5 text-amber-600" />
+                        Duplicates
+                        {duplicateClusterCount !== null && duplicateClusterCount > 0 && (
+                            <Badge className="ml-2 bg-amber-600 hover:bg-amber-600 text-white text-[10px] px-1.5 py-0 h-4">
+                                {duplicateClusterCount}
+                            </Badge>
+                        )}
+                    </Button>
+                    <AddQuestionDialog onSuccess={() => { fetchQuestions(); fetchDuplicateCount(); }} />
+                </div>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 items-center">
@@ -274,11 +314,11 @@ export default function QuestionBankPage() {
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Subjects</SelectItem>
-                        <SelectItem value="Mathematics">Mathematics</SelectItem>
-                        <SelectItem value="English Language">English Language</SelectItem>
-                        <SelectItem value="General Paper">General Paper</SelectItem>
-                        <SelectItem value="Basic Science">Basic Science</SelectItem>
-                        <SelectItem value="Social Studies">Social Studies</SelectItem>
+                        {availableSubjects.map((sub) => (
+                            <SelectItem key={sub.id} value={sub.name}>
+                                {sub.icon} {sub.name}
+                            </SelectItem>
+                        ))}
                     </SelectContent>
                 </Select>
             </div>
@@ -450,7 +490,19 @@ export default function QuestionBankPage() {
                 onOpenChange={(open) => !open && setEditQuestion(null)}
                 questionId={editQuestion?.id || ""}
                 classYear={editQuestion?.classYear || "year_6"}
-                onSuccess={fetchQuestions}
+                onSuccess={() => { fetchQuestions(); fetchDuplicateCount(); }}
+            />
+
+            {/* Duplicate Questions Resolution Modal */}
+            <DuplicateQuestionsModal
+                isOpen={showDuplicatesModal}
+                onClose={() => setShowDuplicatesModal(false)}
+                classYear={classYear}
+                onClassYearChange={(newYear) => setClassYear(newYear)}
+                onResolved={() => {
+                    fetchQuestions();
+                    fetchDuplicateCount();
+                }}
             />
         </div>
     );

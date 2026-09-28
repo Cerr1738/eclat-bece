@@ -1,504 +1,858 @@
-import { useState, useEffect, useMemo } from "react";
-import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, Search, Sparkles, BookOpen, Plus, User, ArrowRight } from "lucide-react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { 
+  AlertTriangle, 
+  CalendarClock, 
+  CheckCircle2, 
+  Clock3, 
+  Search, 
+  Sparkles, 
+  Plus, 
+  Loader2, 
+  Bell, 
+  Target, 
+  Info,
+  X,
+  BookOpen,
+  Eye
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
+import { useParentAccount } from "@/hooks/useParentAccount";
 import { supabase } from "@/integrations/supabase/client";
-import { AssignPracticeDialog } from "@/components/AssignPracticeDialog";
-import { LinkedChild } from "@/types/parent";
 import { toast } from "sonner";
+import { formatDistanceToNow, format } from "date-fns";
+import { AssignPracticeDialog } from "@/components/AssignPracticeDialog";
+import { QuestionSnapshotDialog } from "@/components/quiz/QuestionSnapshotDialog";
+import { LinkedChild } from "@/types/parent";
 
-interface AssignmentDisplay {
+interface AssignmentRecord {
   id: string;
-  title: string;
-  child: string;
-  childId?: string;
+  student_id: string;
+  parent_id: string;
   subject: string;
-  status: "Overdue" | "Pending" | "Completed";
-  due: string;
-  questions?: number;
-  duration?: number;
+  topics: string[];
+  num_questions: number;
+  duration: number;
+  status: "pending" | "completed";
+  score?: number | null;
+  created_at: string;
+  completed_at?: string | null;
+  student_name?: string;
+  student_user_id?: string;
+  questions_snapshot?: {
+    questions: any[];
+    userResponses: (number | null)[];
+    answers: boolean[];
+    score?: number;
+    totalQuestions?: number;
+    completedAt?: string;
+  } | null;
 }
-
-const fallbackNeedsAttention: AssignmentDisplay[] = [
-  {
-    id: "att-1",
-    title: "Advanced Algebra Worksheet",
-    child: "Ore Alle",
-    subject: "Mathematics",
-    status: "Overdue",
-    due: "2 days ago",
-    questions: 15,
-    duration: 25,
-  },
-  {
-    id: "att-2",
-    title: "Physics Lab Report & Quiz",
-    child: "Ore Alle",
-    subject: "Basic Science",
-    status: "Overdue",
-    due: "Yesterday",
-    questions: 20,
-    duration: 30,
-  },
-];
-
-const fallbackUpcoming: AssignmentDisplay[] = [
-  {
-    id: "up-1",
-    title: "English Literature Grammar Revision",
-    child: "Weird Ore",
-    subject: "English Language",
-    status: "Pending",
-    due: "Due tomorrow, 11:59 PM",
-    questions: 20,
-    duration: 30,
-  },
-  {
-    id: "up-2",
-    title: "BECE Social Studies Practice",
-    child: "Ore Alle",
-    subject: "Social Studies",
-    status: "Pending",
-    due: "Due in 3 days",
-    questions: 15,
-    duration: 20,
-  },
-];
-
-const fallbackRecent: AssignmentDisplay[] = [
-  {
-    id: "rec-1",
-    title: "Living Things & Environment Quiz",
-    child: "Weird Ore",
-    subject: "Basic Science",
-    status: "Completed",
-    due: "Completed today",
-    questions: 15,
-    duration: 20,
-  },
-  {
-    id: "rec-2",
-    title: "French Vocabulary & Grammar",
-    child: "Ore Alle",
-    subject: "French",
-    status: "Completed",
-    due: "Completed yesterday",
-    questions: 25,
-    duration: 35,
-  },
-];
 
 export default function ParentAssignmentsPage() {
   const { user } = useAuth();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedStudentFilter, setSelectedStudentFilter] = useState("all");
-  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState("all");
+  const { parentId, loading: parentLoading } = useParentAccount();
+  const [loading, setLoading] = useState(true);
   const [children, setChildren] = useState<LinkedChild[]>([]);
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [assignTargetChild, setAssignTargetChild] = useState<LinkedChild | null>(null);
+  const [assignments, setAssignments] = useState<AssignmentRecord[]>([]);
 
-  const [needsAttention, setNeedsAttention] = useState<AssignmentDisplay[]>(fallbackNeedsAttention);
-  const [upcoming, setUpcoming] = useState<AssignmentDisplay[]>(fallbackUpcoming);
-  const [recent, setRecent] = useState<AssignmentDisplay[]>(fallbackRecent);
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedStudentFilter, setSelectedStudentFilter] = useState<string>("all");
+  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<string>("all");
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("all");
 
-  useEffect(() => {
-    const fetchParentAssignments = async () => {
-      if (!user) return;
-      try {
-        const { data: parentData } = await supabase
-          .from("parents")
-          .select("id")
-          .eq("user_id", user.id)
-          .maybeSingle();
+  // Dialog states
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [selectedChildForAssign, setSelectedChildForAssign] = useState<LinkedChild | null>(null);
+  const [detailsAssignment, setDetailsAssignment] = useState<AssignmentRecord | null>(null);
+  const [sendingReminderId, setSendingReminderId] = useState<string | null>(null);
 
-        if (!parentData) return;
+  // Review Assignment Snapshot State
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [reviewSnapshot, setReviewSnapshot] = useState<{
+    questions: any[];
+    userResponses: (number | null)[];
+    answers: boolean[];
+    subjectName: string;
+    childName: string;
+  } | null>(null);
+  const [loadingReview, setLoadingReview] = useState(false);
 
-        // Fetch children
-        const { data: studentsData } = await supabase
-          .from("students")
-          .select(`
-            id,
-            user_id,
-            class_year,
-            is_premium,
-            profile:profiles(full_name, unique_id, username)
-          `)
-          .eq("parent_id", parentData.id);
+  const handleReviewAssignment = async (item: AssignmentRecord) => {
+    // 1. If questions_snapshot exists, use it directly with guaranteed chronological order
+    if (item.questions_snapshot?.questions?.length) {
+      const snap = item.questions_snapshot;
+      const sortedQuestions = [...snap.questions].sort((a: any, b: any) => {
+        const orderA = a.question_number ?? a.original_order ?? 0;
+        const orderB = b.question_number ?? b.original_order ?? 0;
+        return orderA - orderB;
+      });
 
-        if (studentsData && studentsData.length > 0) {
-          const linked: LinkedChild[] = studentsData.map((s) => ({
-            id: s.id,
-            user_id: s.user_id,
-            class_year: s.class_year || "year_9",
-            is_premium: s.is_premium || false,
-            profile: {
-              full_name: (s.profile as any)?.full_name || null,
-              unique_id: (s.profile as any)?.unique_id || "",
-              username: (s.profile as any)?.username || null,
-            },
-          }));
-          setChildren(linked);
+      const sortedAnswers = sortedQuestions.map((q: any, i: number) =>
+        q.isCorrect !== undefined ? q.isCorrect : (snap.answers?.[i] ?? false)
+      );
+      const sortedResponses = sortedQuestions.map((q: any, i: number) =>
+        q.userResponse !== undefined ? q.userResponse : (snap.userResponses?.[i] ?? null)
+      );
 
-          // Fetch actual assignments
-          const childIds = linked.map((c) => c.id);
-          const { data: assignmentsData } = await supabase
-            .from("practice_assignments")
-            .select("id, student_id, subject, topics, num_questions, duration, status, created_at")
-            .in("student_id", childIds)
-            .order("created_at", { ascending: false });
-
-          if (assignmentsData && assignmentsData.length > 0) {
-            const childMap = new Map(linked.map((c) => [c.id, c.profile.full_name || "Child"]));
-            const pendingList: AssignmentDisplay[] = [];
-            const completedList: AssignmentDisplay[] = [];
-
-            assignmentsData.forEach((item) => {
-              const topics = Array.isArray(item.topics) ? item.topics.join(", ") : "";
-              const childName = childMap.get(item.student_id) || "Child";
-              const title = topics ? `${item.subject} (${topics})` : `${item.subject} Practice`;
-
-              const entry: AssignmentDisplay = {
-                id: item.id,
-                title,
-                child: childName,
-                childId: item.student_id,
-                subject: item.subject,
-                status: item.status === "completed" ? "Completed" : "Pending",
-                due: item.status === "completed" ? "Finished" : "Active Practice",
-                questions: item.num_questions,
-                duration: item.duration,
-              };
-
-              if (item.status === "completed") {
-                completedList.push(entry);
-              } else {
-                pendingList.push(entry);
-              }
-            });
-
-            if (pendingList.length > 0) setUpcoming(pendingList);
-            if (completedList.length > 0) setRecent(completedList);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching parent assignments:", err);
-      }
-    };
-
-    fetchParentAssignments();
-  }, [user]);
-
-  const handleOpenAssign = (childId?: string) => {
-    if (children.length === 0) {
-      toast.info("Please add a child account first in 'My Children'.");
+      setReviewSnapshot({
+        questions: sortedQuestions,
+        userResponses: sortedResponses,
+        answers: sortedAnswers,
+        subjectName: item.subject,
+        childName: item.student_name || "Child",
+      });
+      setReviewModalOpen(true);
       return;
     }
-    const target = children.find((c) => c.id === childId) || children[0];
-    setAssignTargetChild(target);
-    setAssignOpen(true);
-  };
 
-  // Unique list of subjects and students for filter pills
-  const allSubjects = useMemo(() => {
-    const set = new Set<string>();
-    [...needsAttention, ...upcoming, ...recent].forEach((a) => set.add(a.subject));
-    return Array.from(set);
-  }, [needsAttention, upcoming, recent]);
+    // 2. Fallback: query matching questions from database
+    setLoadingReview(true);
+    try {
+      const { data: student } = await supabase
+        .from("students")
+        .select("class_year")
+        .eq("id", item.student_id)
+        .maybeSingle();
 
-  const allStudentNames = useMemo(() => {
-    const set = new Set<string>();
-    [...needsAttention, ...upcoming, ...recent].forEach((a) => set.add(a.child));
-    return Array.from(set);
-  }, [needsAttention, upcoming, recent]);
+      const classYear = student?.class_year || "year_6";
+      const tableName = classYear === "year_6" ? "quiz_questions_year6" : "quiz_questions_year9";
+      const optionsTableName = classYear === "year_6" ? "quiz_options_year6" : "quiz_options_year9";
+      const passageTableName = classYear === "year_6" ? "comprehension_passages_year6" : "comprehension_passages_year9";
 
-  const matchesFilter = (item: AssignmentDisplay) => {
-    if (selectedStudentFilter !== "all" && item.child !== selectedStudentFilter) return false;
-    if (selectedSubjectFilter !== "all" && item.subject !== selectedSubjectFilter) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        item.title.toLowerCase().includes(q) ||
-        item.subject.toLowerCase().includes(q) ||
-        item.child.toLowerCase().includes(q)
-      );
+      let query = supabase.from(tableName).select(`*, passage:${passageTableName}(title, passage_text)`);
+      if (item.subject) query = query.eq("subject", item.subject);
+      if (item.topics?.length) query = query.in("topic", item.topics);
+
+      const { data: qData, error: qErr } = await query.limit(item.num_questions || 10);
+      if (qErr || !qData || qData.length === 0) {
+        toast.info("No questions found for this assignment topic.");
+        return;
+      }
+
+      const qIds = qData.map((q: any) => q.id);
+      const { data: optData } = await supabase.from(optionsTableName as any).select("*").in("question_id", qIds).order("display_order");
+      const optMap = (optData || []).reduce((acc: any, opt: any) => {
+        if (!acc[opt.question_id]) acc[opt.question_id] = [];
+        acc[opt.question_id].push(opt);
+        return acc;
+      }, {});
+
+      const fallbackQuestions = qData.map((q: any) => {
+        const opts = optMap[q.id] || [];
+        const corrIdx = opts.findIndex((o: any) => o.is_correct);
+        return {
+          id: q.id,
+          question: q.question_text,
+          options: opts.map((o: any) => ({ text: o.option_text, image_url: o.image_url || null })),
+          correctAnswer: corrIdx >= 0 ? corrIdx : 0,
+          explanation: q.explanation || "No explanation provided.",
+          subject: q.subject,
+          image_url: q.image_url || null,
+          passage: q.passage || null,
+        };
+      });
+
+      setReviewSnapshot({
+        questions: fallbackQuestions,
+        userResponses: fallbackQuestions.map((q) => (item.score && item.score >= 50 ? q.correctAnswer : null)),
+        answers: fallbackQuestions.map(() => true),
+        subjectName: item.subject,
+        childName: item.student_name || "Child",
+      });
+      setReviewModalOpen(true);
+    } catch (err) {
+      console.error("Error loading assignment review:", err);
+      toast.error("Could not load question snapshot.");
+    } finally {
+      setLoadingReview(false);
     }
-    return true;
   };
 
-  const filteredAttention = needsAttention.filter(matchesFilter);
-  const filteredUpcoming = upcoming.filter(matchesFilter);
-  const filteredRecent = recent.filter(matchesFilter);
+  const fetchAssignmentsData = useCallback(async (pId: string) => {
+    try {
+      setLoading(true);
+
+      // Fetch linked children
+      const { data: childrenData, error: childrenError } = await supabase
+        .from("students")
+        .select("id, user_id, class_year, is_premium, profile:profiles(full_name, unique_id, username)")
+        .eq("parent_id", pId);
+
+      if (childrenError) throw childrenError;
+
+      const typedChildren = (childrenData || []) as unknown as LinkedChild[];
+      setChildren(typedChildren);
+      if (typedChildren.length > 0 && !selectedChildForAssign) {
+        setSelectedChildForAssign(typedChildren[0]);
+      }
+
+      const studentMap = new Map<string, { name: string; userId: string }>();
+      typedChildren.forEach((c) => {
+        studentMap.set(c.id, {
+          name: c.profile?.full_name || "Unknown Student",
+          userId: c.user_id,
+        });
+      });
+
+      // Fetch practice assignments
+      const { data: assignmentsData, error: assignmentsError } = await supabase
+        .from("practice_assignments")
+        .select("*")
+        .eq("parent_id", pId)
+        .order("created_at", { ascending: false });
+
+      if (assignmentsError) throw assignmentsError;
+
+      const mappedAssignments: AssignmentRecord[] = (assignmentsData || []).map((a) => {
+        const studentInfo = studentMap.get(a.student_id);
+        return {
+          ...a,
+          student_name: studentInfo?.name || "Student",
+          student_user_id: studentInfo?.userId,
+        };
+      });
+
+      setAssignments(mappedAssignments);
+    } catch (error) {
+      console.error("Error loading assignments:", error);
+      toast.error("Failed to load assignments");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedChildForAssign]);
+
+  useEffect(() => {
+    if (parentId) {
+      fetchAssignmentsData(parentId);
+    } else if (!parentLoading) {
+      setLoading(false);
+    }
+  }, [parentId, parentLoading, fetchAssignmentsData]);
+
+  // Distinct subjects for filter
+  const availableSubjects = useMemo(() => {
+    const subjects = new Set<string>();
+    assignments.forEach((a) => {
+      if (a.subject) subjects.add(a.subject);
+    });
+    return Array.from(subjects).sort();
+  }, [assignments]);
+
+  // Filtered assignments
+  const filteredAssignments = useMemo(() => {
+    return assignments.filter((a) => {
+      if (selectedStudentFilter !== "all" && a.student_id !== selectedStudentFilter) {
+        return false;
+      }
+      if (selectedSubjectFilter !== "all" && a.subject !== selectedSubjectFilter) {
+        return false;
+      }
+      if (selectedStatusFilter !== "all" && a.status !== selectedStatusFilter) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const matchesSubject = a.subject.toLowerCase().includes(query);
+        const matchesStudent = (a.student_name || "").toLowerCase().includes(query);
+        const matchesTopics = (a.topics || []).some((t) => t.toLowerCase().includes(query));
+        if (!matchesSubject && !matchesStudent && !matchesTopics) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [assignments, selectedStudentFilter, selectedSubjectFilter, selectedStatusFilter, searchQuery]);
+
+  // Categorize
+  const { needsAttention, upcoming, completed } = useMemo(() => {
+    const now = Date.now();
+    const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
+
+    const needs: AssignmentRecord[] = [];
+    const up: AssignmentRecord[] = [];
+    const comp: AssignmentRecord[] = [];
+
+    filteredAssignments.forEach((a) => {
+      const createdAt = new Date(a.created_at).getTime();
+      const isPastDue = a.status === "pending" && (now - createdAt > twoDaysMs);
+      const isLowScore = a.status === "completed" && typeof a.score === "number" && a.score < 50;
+
+      if (isPastDue || isLowScore) {
+        needs.push(a);
+      } else if (a.status === "pending") {
+        up.push(a);
+      } else {
+        comp.push(a);
+      }
+    });
+
+    return { needsAttention: needs, upcoming: up, completed: comp };
+  }, [filteredAssignments]);
+
+  const handleRemindChild = async (assignment: AssignmentRecord) => {
+    if (!assignment.student_user_id) {
+      toast.error("Could not find student account to send reminder");
+      return;
+    }
+
+    try {
+      setSendingReminderId(assignment.id);
+      const { error } = await supabase.from("notifications").insert({
+        user_id: assignment.student_user_id,
+        title: "Assignment Reminder",
+        message: `Friendly reminder from your parent: Please complete your practice task for ${assignment.subject}.`,
+        type: "parent_assignment",
+        read: false,
+        metadata: {
+          assignment_id: assignment.id,
+          subject: assignment.subject,
+        },
+      });
+
+      if (error) throw error;
+      toast.success(`Reminder sent to ${assignment.student_name}!`);
+    } catch (err) {
+      console.error("Error sending reminder:", err);
+      toast.error("Failed to send reminder notification");
+    } finally {
+      setSendingReminderId(null);
+    }
+  };
+
+  const getRelativeTime = (dateStr: string) => {
+    try {
+      return formatDistanceToNow(new Date(dateStr), { addSuffix: true });
+    } catch {
+      return dateStr;
+    }
+  };
 
   return (
-    <div className="w-full space-y-6 sm:space-y-8">
-      {/* Header section with unified school/student typography */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="w-full px-3 pb-20 pt-6 md:px-6">
+      {/* Header */}
+      <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-[#2d4b68] bg-[#0c2438] px-3 py-1 text-[11px] font-semibold text-[#58c4e8]">
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>Academic Management</span>
-          </div>
-          <h1 className="mt-2 text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-[#71c9ed]">
-            Assignments Manager<span className="text-[#3bc2f3]">.</span>
+          <div className="parent-section-chip">Academic Service</div>
+          <h1 className="mt-4 text-4xl font-black tracking-tight text-foreground md:text-5xl">
+            Assignments Manager
           </h1>
-          <p className="mt-1 text-xs sm:text-sm text-slate-400">
-            Track, assign customized practice drills, and monitor student completion rates.
+          <p className="mt-2 text-base text-muted-foreground">
+            Track, assign, and manage practice tasks and quizzes for your children.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button
-            onClick={() => handleOpenAssign()}
-            className="bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff] font-semibold text-xs sm:text-sm"
+            onClick={() => setAssignDialogOpen(true)}
+            disabled={children.length === 0}
+            className="h-12 rounded-xl bg-primary px-5 text-sm font-black text-primary-foreground shadow-lg shadow-primary/20 hover:opacity-90 transition-all"
           >
-            <BookOpen className="mr-1.5 h-4 w-4" />
-            Assign Practice
+            <Plus className="mr-2 h-5 w-5" />
+            Assign Practice Task
           </Button>
         </div>
       </div>
 
-      {/* Filter & Search Bar */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[240px] max-w-md">
-          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      {/* Filter Bar */}
+      <div className="mb-8 flex flex-wrap items-center gap-3 rounded-2xl border border-border/60 bg-card/40 p-3 backdrop-blur-sm">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            placeholder="Search assignments by subject, topic, or child..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by topic, subject, or child..."
-            className="h-10 pl-10 rounded-xl border border-[#26344d] bg-[#0d162a] text-xs sm:text-sm text-slate-200 placeholder:text-slate-400 focus:border-[#3bc2f3]/60 focus:ring-1 focus:ring-[#3bc2f3]/20"
+            className="parent-search h-11 bg-background/50 pl-10 text-sm"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         {/* Student Filter */}
-        <select
-          aria-label="Filter by student"
-          value={selectedStudentFilter}
-          onChange={(e) => setSelectedStudentFilter(e.target.value)}
-          className="h-10 rounded-xl border border-[#26344d] bg-[#0d162a] px-3 text-xs sm:text-sm text-slate-300 focus:outline-none focus:border-[#3bc2f3]"
-        >
-          <option value="all">All Children</option>
-          {allStudentNames.map((name) => (
-            <option key={name} value={name}>{name}</option>
-          ))}
-        </select>
+        <Select value={selectedStudentFilter} onValueChange={setSelectedStudentFilter}>
+          <SelectTrigger className="h-11 min-w-[150px] rounded-xl border-border/60 bg-background/50 font-bold text-xs">
+            <SelectValue placeholder="All Students" />
+          </SelectTrigger>
+          <SelectContent className="rounded-xl">
+            <SelectItem value="all" className="font-bold text-xs">All Students</SelectItem>
+            {children.map((c) => (
+              <SelectItem key={c.id} value={c.id} className="font-bold text-xs">
+                {c.profile?.full_name || "Child"}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         {/* Subject Filter */}
-        <select
-          aria-label="Filter by subject"
-          value={selectedSubjectFilter}
-          onChange={(e) => setSelectedSubjectFilter(e.target.value)}
-          className="h-10 rounded-xl border border-[#26344d] bg-[#0d162a] px-3 text-xs sm:text-sm text-slate-300 focus:outline-none focus:border-[#3bc2f3]"
-        >
-          <option value="all">All Subjects</option>
-          {allSubjects.map((sub) => (
-            <option key={sub} value={sub}>{sub}</option>
-          ))}
-        </select>
+        <Select value={selectedSubjectFilter} onValueChange={setSelectedSubjectFilter}>
+          <SelectTrigger className="h-11 min-w-[140px] rounded-xl border-border/60 bg-background/50 font-bold text-xs">
+            <SelectValue placeholder="All Subjects" />
+          </SelectTrigger>
+          <SelectContent className="rounded-xl">
+            <SelectItem value="all" className="font-bold text-xs">All Subjects</SelectItem>
+            {availableSubjects.map((sub) => (
+              <SelectItem key={sub} value={sub} className="font-bold text-xs">
+                {sub}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Status Filter */}
+        <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter}>
+          <SelectTrigger className="h-11 min-w-[130px] rounded-xl border-border/60 bg-background/50 font-bold text-xs">
+            <SelectValue placeholder="Status: Any" />
+          </SelectTrigger>
+          <SelectContent className="rounded-xl">
+            <SelectItem value="all" className="font-bold text-xs">Status: Any</SelectItem>
+            <SelectItem value="pending" className="font-bold text-xs">Pending</SelectItem>
+            <SelectItem value="completed" className="font-bold text-xs">Completed</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Grid: Main Tasks & Summaries */}
-      <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-        <div className="space-y-6 sm:space-y-8">
-          {/* Needs Attention / Overdue */}
-          {filteredAttention.length > 0 && (
-            <div className="space-y-3 sm:space-y-4">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-rose-400" />
-                <h2 className="text-lg sm:text-xl font-black tracking-tight text-[#71c9ed]">Needs Attention</h2>
-                <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold text-rose-400 border border-rose-500/30">
-                  {filteredAttention.length}
-                </span>
-              </div>
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20 space-y-4">
+          <Loader2 className="h-10 w-10 text-primary animate-spin" />
+          <p className="text-muted-foreground font-medium animate-pulse">Loading assignments...</p>
+        </div>
+      ) : assignments.length === 0 ? (
+        <Card className="rounded-[2.5rem] border-3 border-dashed border-border/60 bg-muted/10 p-16 flex flex-col items-center justify-center text-center space-y-6">
+          <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center">
+            <BookOpen className="h-10 w-10 text-primary" />
+          </div>
+          <div className="space-y-2 max-w-md">
+            <h2 className="text-2xl font-black tracking-tight">No Practice Tasks Assigned Yet</h2>
+            <p className="text-muted-foreground font-medium text-sm leading-relaxed">
+              Create structured homework or practice sets tailored to your child’s exam syllabus (Common Entrance or BECE).
+            </p>
+          </div>
+          <Button
+            onClick={() => setAssignDialogOpen(true)}
+            disabled={children.length === 0}
+            className="rounded-2xl h-13 px-8 font-black text-base shadow-xl shadow-primary/20"
+          >
+            <Plus className="mr-2 h-5 w-5" />
+            Assign First Practice Task
+          </Button>
+        </Card>
+      ) : filteredAssignments.length === 0 ? (
+        <Card className="rounded-[2rem] border border-border/60 bg-card/40 p-12 text-center space-y-3">
+          <p className="text-lg font-bold text-foreground">No assignments match your active filters</p>
+          <p className="text-sm text-muted-foreground">Try clearing the search query or adjusting your filters.</p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setSearchQuery("");
+              setSelectedStudentFilter("all");
+              setSelectedSubjectFilter("all");
+              setSelectedStatusFilter("all");
+            }}
+            className="rounded-xl mt-2"
+          >
+            Reset Filters
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+          <div className="space-y-6">
+            {/* Needs Attention Section */}
+            {needsAttention.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-6 w-6 text-[#ff5d67]" />
+                  <h2 className="text-2xl font-black tracking-tight text-foreground">Needs Attention</h2>
+                  <Badge variant="outline" className="border-[#ff5d67]/40 bg-[#ff5d67]/10 text-[#ff5d67] font-black text-xs">
+                    {needsAttention.length}
+                  </Badge>
+                </div>
 
-              <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
-                {filteredAttention.map((item) => (
-                  <Card
-                    key={item.id}
-                    className="border border-[#4c1d24] bg-[#170e17] text-slate-100 hover:border-[#6f2935] transition-colors rounded-2xl"
-                  >
-                    <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full">
-                      <div>
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <span className="rounded-full bg-rose-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-rose-400 border border-rose-500/30">
-                            {item.status}
-                          </span>
-                          <span className="text-xs text-slate-400">{item.due}</span>
-                        </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {needsAttention.map((item) => (
+                    <Card key={item.id} className="parent-panel rounded-[1.5rem] border border-[#ff5d67]/40 bg-[#ff5d67]/5 p-0">
+                      <CardContent className="p-5 flex flex-col justify-between h-full">
+                        <div>
+                          <div className="mb-4 flex items-center justify-between">
+                            <span className="rounded-full bg-[#ff5d67]/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-[#ff6a70]">
+                              {item.status === "completed" ? "Low Score" : "Overdue"}
+                            </span>
+                            <span className="text-xs font-semibold text-muted-foreground">
+                              {getRelativeTime(item.created_at)}
+                            </span>
+                          </div>
 
-                        <h3 className="text-base sm:text-lg font-bold text-[#71c9ed] leading-snug">
-                          {item.title}
-                        </h3>
+                          <h3 className="text-2xl font-black leading-tight text-foreground">{item.subject}</h3>
 
-                        <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
-                          <span className="font-semibold text-slate-200">{item.child}</span>
-                          <span>•</span>
-                          <span className="text-[#58c4e8]">{item.subject}</span>
-                          {item.questions && (
-                            <>
-                              <span>•</span>
-                              <span>{item.questions} Qs</span>
-                            </>
+                          <div className="mt-2 text-sm text-muted-foreground">
+                            <span className="font-semibold text-foreground">{item.student_name}</span> · {item.num_questions} Questions
+                          </div>
+
+                          {item.topics && item.topics.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-1">
+                              {item.topics.slice(0, 2).map((t, idx) => (
+                                <span key={idx} className="rounded-md bg-background/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                  {t}
+                                </span>
+                              ))}
+                              {item.topics.length > 2 && (
+                                <span className="text-[10px] text-muted-foreground">+{item.topics.length - 2} more</span>
+                              )}
+                            </div>
                           )}
                         </div>
-                      </div>
 
-                      <div className="mt-5 pt-3 border-t border-[#3b171d] flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => toast.success(`Reminder notification sent to ${item.child}!`)}
-                          className="flex-1 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30 text-xs font-semibold"
-                        >
-                          Remind Child
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenAssign(item.childId)}
-                          className="border-[#384c6e] bg-[#0c1628] text-slate-300 hover:text-white text-xs"
-                        >
-                          Reassign
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                        <div className="mt-6 grid grid-cols-2 gap-3">
+                          {item.status === "pending" ? (
+                            <Button
+                              variant="outline"
+                              onClick={() => handleRemindChild(item)}
+                              disabled={sendingReminderId === item.id}
+                              className="rounded-xl border-[#ff5d67]/30 bg-[#ff5d67]/10 font-black text-[#ff6a70] hover:bg-[#ff5d67]/20 text-xs"
+                            >
+                              {sendingReminderId === item.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <>
+                                  <Bell className="mr-1.5 h-3.5 w-3.5" />
+                                  Remind Child
+                                </>
+                              )}
+                            </Button>
+                          ) : (
+                            <Badge className="bg-amber-500/10 text-amber-500 font-black text-xs justify-center rounded-xl py-2">
+                              Score: {item.score}%
+                            </Badge>
+                          )}
+                          <Button
+                            variant="ghost"
+                            onClick={() => setDetailsAssignment(item)}
+                            className="rounded-xl border border-border/60 bg-background/30 font-semibold text-foreground text-xs"
+                          >
+                            Details
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Upcoming & Active */}
-          <div className="space-y-3 sm:space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CalendarClock className="h-5 w-5 text-[#58c4e8]" />
-                <h2 className="text-lg sm:text-xl font-black tracking-tight text-[#71c9ed]">Active &amp; Upcoming</h2>
-                <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-[#58c4e8] border border-sky-500/30">
-                  {filteredUpcoming.length}
-                </span>
+            {/* Upcoming / In Progress Section */}
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center gap-3">
+                <CalendarClock className="h-6 w-6 text-primary" />
+                <h2 className="text-2xl font-black tracking-tight text-foreground">In Progress Tasks</h2>
+                <Badge variant="outline" className="font-black text-xs">
+                  {upcoming.length}
+                </Badge>
               </div>
-            </div>
 
-            <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
-              {filteredUpcoming.map((item) => (
-                <Card
-                  key={item.id}
-                  className="border border-[#233148] bg-[#0c1628] text-slate-100 hover:border-[#384c6e] transition-colors rounded-2xl"
-                >
-                  <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full">
-                    <div>
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="rounded-full bg-sky-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-sky-300 border border-sky-500/30">
-                          {item.status}
-                        </span>
-                        <span className="text-xs text-slate-400">{item.due}</span>
-                      </div>
+              {upcoming.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">
+                  No pending tasks in this category.
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {upcoming.map((item) => (
+                    <Card key={item.id} className="parent-panel rounded-[1.5rem] border border-border/60 bg-card/60 p-0">
+                      <CardContent className="p-5 flex flex-col justify-between h-full">
+                        <div>
+                          <div className="mb-4 flex items-center justify-between">
+                            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-primary">
+                              Pending
+                            </span>
+                            <span className="text-xs font-semibold text-muted-foreground">
+                              {getRelativeTime(item.created_at)}
+                            </span>
+                          </div>
 
-                      <h3 className="text-base sm:text-lg font-bold text-[#71c9ed] leading-snug">
-                        {item.title}
-                      </h3>
+                          <h3 className="text-2xl font-black leading-tight text-foreground">{item.subject}</h3>
+                          <div className="mt-2 text-sm text-muted-foreground">
+                            <span className="font-semibold text-foreground">{item.student_name}</span> · {item.num_questions} Questions · {item.duration} mins
+                          </div>
 
-                      <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
-                        <span className="font-semibold text-slate-200">{item.child}</span>
-                        <span>•</span>
-                        <span className="text-[#58c4e8]">{item.subject}</span>
-                        {item.questions && (
-                          <>
-                            <span>•</span>
-                            <span>{item.questions} Qs</span>
-                          </>
-                        )}
-                        {item.duration && (
-                          <>
-                            <span>•</span>
-                            <span>{item.duration} Mins</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
+                          {item.topics && item.topics.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-1">
+                              {item.topics.slice(0, 2).map((t, idx) => (
+                                <span key={idx} className="rounded-md bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                                  {t}
+                                </span>
+                              ))}
+                              {item.topics.length > 2 && (
+                                <span className="text-[10px] text-muted-foreground">+{item.topics.length - 2} more</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
 
-                    <div className="mt-5 pt-3 border-t border-[#1e2c45]">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenAssign(item.childId)}
-                        className="w-full border-slate-700 bg-slate-900/60 text-xs text-slate-200 hover:bg-slate-800"
-                      >
-                        View Assignment Details
-                        <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                        <div className="mt-6 grid grid-cols-2 gap-3">
+                          <Button
+                            variant="outline"
+                            onClick={() => handleRemindChild(item)}
+                            disabled={sendingReminderId === item.id}
+                            className="rounded-xl border-border/60 bg-background/30 font-semibold text-foreground text-xs"
+                          >
+                            {sendingReminderId === item.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <>
+                                <Bell className="mr-1.5 h-3.5 w-3.5 text-primary" />
+                                Remind
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onClick={() => setDetailsAssignment(item)}
+                            className="rounded-xl border border-border/60 bg-background/30 font-semibold text-foreground text-xs"
+                          >
+                            Details
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Sidebar panels: Recent activity & Completed highlights */}
-        <div className="space-y-6">
-          <Card className="border border-[#233148] bg-[#0c1628] text-slate-100 rounded-2xl">
-            <CardContent className="p-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-[#1e2c45] pb-3">
+          {/* Right Column: Completed / Recent Submissions */}
+          <div className="space-y-6">
+            <div className="rounded-[1.8rem] border border-border/60 bg-card/60 p-5 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                  <h3 className="text-base font-bold text-[#71c9ed]">Recently Completed</h3>
+                  <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                  <h3 className="text-2xl font-black text-foreground">Completed Tasks</h3>
                 </div>
-                <span className="text-xs text-slate-400">{filteredRecent.length} tasks</span>
+                <Badge className="bg-emerald-500/10 text-emerald-600 border-none font-black text-xs">
+                  {completed.length} Done
+                </Badge>
               </div>
 
-              <div className="space-y-3">
-                {filteredRecent.map((item) => (
-                  <div
-                    key={item.id}
-                    className="rounded-xl border border-[#202b43] bg-[#080f22] p-3.5 space-y-2"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/30">
-                        Completed
-                      </span>
-                      <span className="text-[11px] text-slate-400">{item.due}</span>
+              {completed.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  No completed tasks yet. Completed assignments will appear here with grades.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {completed.slice(0, 8).map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => setDetailsAssignment(item)}
+                      className="group flex items-center justify-between rounded-2xl border border-border/60 bg-background/40 p-4 transition-all hover:border-primary/40 cursor-pointer"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-foreground">{item.subject}</span>
+                          <span className="text-[10px] text-muted-foreground font-medium">• {item.student_name}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {item.completed_at ? `Completed ${getRelativeTime(item.completed_at)}` : "Finished"}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-emerald-500/10 text-emerald-600 border-none font-black text-sm px-2.5 py-1">
+                          {typeof item.score === "number" ? `${item.score}%` : "Done"}
+                        </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleReviewAssignment(item);
+                          }}
+                          className="h-8 px-2.5 text-xs font-bold gap-1 rounded-xl border-primary/25 text-primary hover:bg-primary/10 transition-colors shadow-none"
+                          title="Review questions and answers"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          Review
+                        </Button>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-                    <p className="text-sm font-semibold text-white">{item.title}</p>
-                    <p className="text-xs text-slate-400">
-                      <span className="font-medium text-slate-300">{item.child}</span> · {item.subject}
-                    </p>
-                  </div>
-                ))}
+            {/* Quick Actions Panel */}
+            <div className="rounded-[1.8rem] border border-border/60 bg-primary/5 p-5">
+              <div className="mb-2 flex items-center gap-2 text-primary font-black text-sm uppercase tracking-wider">
+                <Sparkles className="h-4 w-4" />
+                Targeted Practice
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Quick Mastery Tip */}
-          <Card className="border border-[#233148] bg-[#0c1628] text-slate-100 rounded-2xl">
-            <CardContent className="p-5 space-y-3">
-              <div className="flex items-center gap-2 text-[#58c4e8]">
-                <Sparkles className="h-5 w-5" />
-                <h4 className="text-sm font-bold text-[#71c9ed]">Parent Tip for BECE &amp; NCEE</h4>
-              </div>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Short 15-question daily practice sessions yield 3x higher retention than weekend cramming. Target specific weak topics identified in your child's Performance Reports.
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Assigning 10 to 15 questions 3 times a week improves student retention by up to 40% before BECE exams.
               </p>
               <Button
-                size="sm"
-                onClick={() => handleOpenAssign()}
-                className="w-full bg-[#17263c] hover:bg-[#203450] text-[#58c4e8] border border-[#264462] text-xs font-semibold mt-2"
+                onClick={() => setAssignDialogOpen(true)}
+                disabled={children.length === 0}
+                className="mt-4 w-full rounded-xl bg-primary text-primary-foreground font-black text-sm"
               >
-                Create Target Drill
+                Create New Drill Set
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Assign Dialog */}
-      {assignTargetChild && (
+      {/* Assignment Details Dialog */}
+      <Dialog open={!!detailsAssignment} onOpenChange={(open) => !open && setDetailsAssignment(null)}>
+        <DialogContent className="sm:max-w-[480px] rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-black">Assignment Details</DialogTitle>
+            <DialogDescription>
+              Task specifications and progress record
+            </DialogDescription>
+          </DialogHeader>
+
+          {detailsAssignment && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-2xl bg-muted/30 p-4 space-y-2 border border-border/50">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Student</span>
+                  <span className="font-bold text-foreground">{detailsAssignment.student_name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Subject</span>
+                  <span className="font-bold text-foreground">{detailsAssignment.subject}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Status</span>
+                  <Badge variant={detailsAssignment.status === "completed" ? "default" : "outline"} className="font-black text-xs">
+                    {detailsAssignment.status.toUpperCase()}
+                  </Badge>
+                </div>
+                {typeof detailsAssignment.score === "number" && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Score</span>
+                    <span className="font-black text-emerald-500 text-lg">{detailsAssignment.score}%</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Questions</span>
+                  <span className="font-medium text-foreground">{detailsAssignment.num_questions} Questions</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Duration</span>
+                  <span className="font-medium text-foreground">{detailsAssignment.duration} Minutes</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Assigned Date</span>
+                  <span className="font-medium text-muted-foreground text-xs">
+                    {format(new Date(detailsAssignment.created_at), "MMM d, yyyy h:mm a")}
+                  </span>
+                </div>
+              </div>
+
+              {detailsAssignment.topics && detailsAssignment.topics.length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-wider text-muted-foreground">Included Topics</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {detailsAssignment.topics.map((t, i) => (
+                      <span key={i} className="rounded-xl border border-border/60 bg-background/50 px-3 py-1 text-xs font-medium">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {detailsAssignment.status === "completed" && (
+                <div className="pt-2">
+                  <Button
+                    variant="default"
+                    onClick={() => {
+                      const target = detailsAssignment;
+                      setDetailsAssignment(null);
+                      handleReviewAssignment(target);
+                    }}
+                    className="w-full gap-2 font-bold bg-primary text-primary-foreground shadow-md h-11 rounded-2xl"
+                  >
+                    <Eye className="w-4 h-4" />
+                    Review Questions & Solutions
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="sm:justify-between">
+            {detailsAssignment?.status === "pending" && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (detailsAssignment) handleRemindChild(detailsAssignment);
+                }}
+                disabled={sendingReminderId === detailsAssignment?.id}
+                className="rounded-xl font-bold"
+              >
+                <Bell className="mr-1.5 h-4 w-4 text-primary" />
+                Send Reminder
+              </Button>
+            )}
+            <Button
+              variant="hero"
+              onClick={() => setDetailsAssignment(null)}
+              className="rounded-xl font-bold ml-auto"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Practice Dialog */}
+      {selectedChildForAssign && (
         <AssignPracticeDialog
-          open={assignOpen}
-          onOpenChange={setAssignOpen}
-          child={assignTargetChild}
+          open={assignDialogOpen}
+          onOpenChange={setAssignDialogOpen}
+          child={selectedChildForAssign}
+          onSuccess={() => {
+            if (parentId) fetchAssignmentsData(parentId);
+          }}
+        />
+      )}
+
+      {/* Question Snapshot Review Dialog for Parent */}
+      {reviewSnapshot && (
+        <QuestionSnapshotDialog
+          open={reviewModalOpen}
+          onOpenChange={setReviewModalOpen}
+          questions={reviewSnapshot.questions}
+          userResponses={reviewSnapshot.userResponses}
+          answers={reviewSnapshot.answers}
+          subjectName={reviewSnapshot.subjectName}
+          isParentView={true}
+          childName={reviewSnapshot.childName}
         />
       )}
     </div>

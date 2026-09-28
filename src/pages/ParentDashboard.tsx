@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
-import { Users, TrendingUp, Plus, Award, Target, ChevronRight, AlertTriangle, Search, Bell, Settings, BookOpen, FileText, Zap, BarChart3, MessageCircle, Copy, Check } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Users, TrendingUp, Plus, Award, Target, ChevronRight, AlertTriangle, Search, Bell, Settings, BookOpen, FileText, Zap, BarChart3, MessageCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useParentAccount } from "@/hooks/useParentAccount";
 import { StudentReportDialog } from "@/components/StudentReportDialog";
 import { AssignPracticeDialog } from "@/components/AssignPracticeDialog";
 import { ChildOverviewCard } from "@/components/parent/ChildOverviewCard";
@@ -19,6 +20,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { LinkedChild, ChildAnalytics, QuizResult, Assignment } from "@/types/parent";
 import { getEdgeFunctionError } from "@/lib/errorUtils";
+import { QuestionSnapshotDialog } from "@/components/quiz/QuestionSnapshotDialog";
+import { WeeklyGrowthDigestCard } from "@/components/parent/WeeklyGrowthDigestCard";
+import { calculateStudentLevel } from "@/services/gamification/levelEngine";
+import { LEAGUE_TIERS } from "@/services/gamification/leagueEngine";
+import { LeagueTierNumber } from "@/services/gamification/types";
 import eclatlLogo from "@/assets/logo.png";
 
 const getErrorMessage = (error: unknown, fallback: string) =>
@@ -45,15 +51,107 @@ export default function ParentDashboard() {
   const [editNameOpen, setEditNameOpen] = useState(false);
   const [editUsernameOpen, setEditUsernameOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-  const [parentCode, setParentCode] = useState<string>("");
-  const [copiedCode, setCopiedCode] = useState(false);
+  const [activeChildIndex, setActiveChildIndex] = useState(0);
 
-  const handleCopyCode = async () => {
-    if (parentCode) {
-      await navigator.clipboard.writeText(parentCode);
-      setCopiedCode(true);
-      toast.success("Parent link code copied to clipboard!");
-      setTimeout(() => setCopiedCode(false), 2000);
+  // Review Assignment Snapshot State
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [reviewSnapshot, setReviewSnapshot] = useState<{
+    questions: any[];
+    userResponses: (number | null)[];
+    answers: boolean[];
+    subjectName: string;
+    childName: string;
+  } | null>(null);
+  const [loadingReview, setLoadingReview] = useState(false);
+
+  const handleReviewAssignment = async (assignment: Assignment, childName: string) => {
+    // 1. If questions_snapshot exists, use it directly with guaranteed chronological order
+    if (assignment.questions_snapshot?.questions?.length) {
+      const snap = assignment.questions_snapshot;
+      const sortedQuestions = [...snap.questions].sort((a: any, b: any) => {
+        const orderA = a.question_number ?? a.original_order ?? 0;
+        const orderB = b.question_number ?? b.original_order ?? 0;
+        return orderA - orderB;
+      });
+
+      const sortedAnswers = sortedQuestions.map((q: any, i: number) =>
+        q.isCorrect !== undefined ? q.isCorrect : (snap.answers?.[i] ?? false)
+      );
+      const sortedResponses = sortedQuestions.map((q: any, i: number) =>
+        q.userResponse !== undefined ? q.userResponse : (snap.userResponses?.[i] ?? null)
+      );
+
+      setReviewSnapshot({
+        questions: sortedQuestions,
+        userResponses: sortedResponses,
+        answers: sortedAnswers,
+        subjectName: assignment.subject,
+        childName,
+      });
+      setReviewModalOpen(true);
+      return;
+    }
+
+    // 2. Fallback: fetch matching questions for this assignment's topics and subject
+    setLoadingReview(true);
+    try {
+      const { data: student } = await supabase
+        .from("students")
+        .select("class_year")
+        .eq("id", assignment.student_id)
+        .maybeSingle();
+
+      const classYear = student?.class_year || "year_6";
+      const tableName = classYear === "year_6" ? "quiz_questions_year6" : "quiz_questions_year9";
+      const optionsTableName = classYear === "year_6" ? "quiz_options_year6" : "quiz_options_year9";
+      const passageTableName = classYear === "year_6" ? "comprehension_passages_year6" : "comprehension_passages_year9";
+
+      let query = supabase.from(tableName).select(`*, passage:${passageTableName}(title, passage_text)`);
+      if (assignment.subject) query = query.eq("subject", assignment.subject);
+      if (assignment.topics?.length) query = query.in("topic", assignment.topics);
+
+      const { data: qData, error: qErr } = await query.limit(assignment.num_questions || 10);
+      if (qErr || !qData || qData.length === 0) {
+        toast.info("No question snapshot found for this assignment.");
+        return;
+      }
+
+      const qIds = qData.map((q: any) => q.id);
+      const { data: optData } = await supabase.from(optionsTableName as any).select("*").in("question_id", qIds).order("display_order");
+      const optMap = (optData || []).reduce((acc: any, opt: any) => {
+        if (!acc[opt.question_id]) acc[opt.question_id] = [];
+        acc[opt.question_id].push(opt);
+        return acc;
+      }, {});
+
+      const fallbackQuestions = qData.map((q: any) => {
+        const opts = optMap[q.id] || [];
+        const corrIdx = opts.findIndex((o: any) => o.is_correct);
+        return {
+          id: q.id,
+          question: q.question_text,
+          options: opts.map((o: any) => ({ text: o.option_text, image_url: o.image_url || null })),
+          correctAnswer: corrIdx >= 0 ? corrIdx : 0,
+          explanation: q.explanation || "No explanation provided.",
+          subject: q.subject,
+          image_url: q.image_url || null,
+          passage: q.passage || null,
+        };
+      });
+
+      setReviewSnapshot({
+        questions: fallbackQuestions,
+        userResponses: fallbackQuestions.map((q, i) => (assignment.score && assignment.score >= 50 ? q.correctAnswer : null)),
+        answers: fallbackQuestions.map(() => true),
+        subjectName: assignment.subject,
+        childName,
+      });
+      setReviewModalOpen(true);
+    } catch (err) {
+      console.error("Error loading assignment review:", err);
+      toast.error("Could not load question snapshot.");
+    } finally {
+      setLoadingReview(false);
     }
   };
 
@@ -71,42 +169,9 @@ export default function ParentDashboard() {
 
   const overallAverage = totalQuizzesGlobal > 0 ? Math.round(totalScoreGlobal / totalQuizzesGlobal) : 0;
 
-  useEffect(() => {
-    const fetchParentData = async () => {
-      if (!user) return;
+  const { parentId, loading: parentAccountLoading } = useParentAccount();
 
-      try {
-        const { data: parentData } = await supabase
-          .from("parents")
-          .select("id")
-          .eq("user_id", user.id)
-          .single();
-
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("unique_id, full_name")
-          .eq("id", user.id)
-          .single();
-
-        if (profileData?.unique_id) {
-          setParentCode(profileData.unique_id);
-        }
-
-        if (parentData) {
-          setParentUserId(parentData.id);
-          await fetchLinkedChildren(parentData.id);
-        }
-      } catch (error) {
-        console.error("Error fetching parent data:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchParentData();
-  }, [user]);
-
-  const fetchLinkedChildren = async (parentId: string) => {
+  const fetchLinkedChildren = useCallback(async (pId: string) => {
     try {
       setGlobalActivities([]); // Reset global activities before fetching
       const { data, error } = await supabase
@@ -118,23 +183,123 @@ export default function ParentDashboard() {
           is_premium,
           profile:profiles(full_name, unique_id, username)
         `)
-        .eq("parent_id", parentId);
+        .eq("parent_id", pId);
 
       if (error) throw error;
 
-      if (data) {
-        setLinkedChildren(data as unknown as LinkedChild[]);
-        // Fetch analytics and assignments for each child
-        data.forEach((child) => {
-          fetchChildAnalytics(child.id, child.profile?.full_name || "Unknown");
-          fetchChildAssignments(child.id);
+      if (data && data.length > 0) {
+        const studentIds = data.map((c) => c.id);
+        const nameMap = new Map(data.map((c) => [c.id, c.profile?.full_name || "Unknown"]));
+
+        // Batched parallel queries for all linked children
+        const [quizzesRes, assignmentsRes, gameProfilesRes, masteriesRes] = await Promise.all([
+          supabase
+            .from("quiz_results")
+            .select("*")
+            .in("student_id", studentIds)
+            .order("completed_at", { ascending: false }),
+          supabase
+            .from("practice_assignments")
+            .select("*")
+            .in("student_id", studentIds)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("student_gamification_profile" as any)
+            .select("*")
+            .in("student_id", studentIds),
+          supabase
+            .from("student_topic_mastery" as any)
+            .select("student_id, subject, topic, rolling_accuracy, status")
+            .in("student_id", studentIds),
+        ]);
+
+        const allQuizzes = (quizzesRes.data || []) as QuizResult[];
+        const allAssignments = (assignmentsRes.data || []) as Assignment[];
+        const allGameProfiles = (gameProfilesRes.data || []) as any[];
+        const allMasteries = (masteriesRes.data || []) as any[];
+
+        const analyticsMap = new Map<string, ChildAnalytics>();
+        studentIds.forEach((sId) => {
+          const childQuizzes = allQuizzes.filter((q) => q.student_id === sId);
+          const gameProfile = allGameProfiles.find((p) => p.student_id === sId);
+          const childMasteries = allMasteries.filter((m) => m.student_id === sId);
+
+          const strongCount = childMasteries.filter((m) => m.status === "Strong").length;
+          const weakCount = childMasteries.filter((m) => m.status === "Weak").length;
+          const lifetimeEP = Number(gameProfile?.lifetime_ep || 0);
+          const lvl = calculateStudentLevel(lifetimeEP);
+          const tier = (gameProfile?.current_league_tier || 1) as LeagueTierNumber;
+          const leagueName = LEAGUE_TIERS[tier]?.name || "Starter League";
+
+          if (childQuizzes.length > 0 || gameProfile) {
+            const averageScore = childQuizzes.length > 0
+              ? childQuizzes.reduce((acc, result) => acc + result.score, 0) / childQuizzes.length
+              : 0;
+            const subjectMap = new Map<string, { totalScore: number; count: number }>();
+            childQuizzes.forEach((result) => {
+              const existing = subjectMap.get(result.subject) || { totalScore: 0, count: 0 };
+              subjectMap.set(result.subject, {
+                totalScore: existing.totalScore + result.score,
+                count: existing.count + 1,
+              });
+            });
+
+            const subjectPerformance = Array.from(subjectMap.entries()).map(([subject, subData]) => ({
+              subject: subject.charAt(0).toUpperCase() + subject.slice(1),
+              avgScore: Math.round(subData.totalScore / subData.count),
+              count: subData.count,
+            }));
+
+            analyticsMap.set(sId, {
+              studentId: sId,
+              averageScore: Math.round(averageScore),
+              totalQuizzes: childQuizzes.length,
+              subjectPerformance,
+              recentQuizzes: childQuizzes.slice(0, 5),
+              lifetimeEP,
+              currentLevel: lvl.level,
+              levelTitle: lvl.title,
+              leagueTier: tier,
+              leagueName,
+              streakCount: Number(gameProfile?.streak_count || 0),
+              streakShields: Number(gameProfile?.streak_shields || 0),
+              strongTopicsCount: strongCount,
+              weakTopicsCount: weakCount,
+            });
+          }
         });
+        setChildrenAnalytics(analyticsMap);
+
+        const childrenWithAssignments = (data as unknown as LinkedChild[]).map((child) => ({
+          ...child,
+          assignments: allAssignments.filter((a) => a.student_id === child.id).slice(0, 5),
+        }));
+        setLinkedChildren(childrenWithAssignments);
+
+        const activitiesWithName = allQuizzes.map((q) => ({
+          ...q,
+          student_name: nameMap.get(q.student_id) || "Student",
+        }));
+        setGlobalActivities(activitiesWithName.slice(0, 3));
+      } else {
+        setLinkedChildren([]);
       }
     } catch (error) {
       console.error("Error fetching linked children:", error);
       toast.error("Failed to load linked children");
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (parentId) {
+      setParentUserId(parentId);
+      fetchLinkedChildren(parentId);
+    } else if (!parentAccountLoading) {
+      setIsLoading(false);
+    }
+  }, [parentId, parentAccountLoading, fetchLinkedChildren]);
 
   const handleDeleteChild = async () => {
     if (!managedChild) return;
@@ -163,79 +328,6 @@ export default function ParentDashboard() {
       toast.error(error instanceof Error ? error.message : "Failed to delete student account");
     } finally {
       setIsDeleting(false);
-    }
-  };
-
-  const fetchChildAnalytics = async (studentId: string, studentName: string) => {
-    try {
-      const { data: quizResults, error } = await supabase
-        .from("quiz_results")
-        .select("*")
-        .eq("student_id", studentId)
-        .order("completed_at", { ascending: false });
-
-      if (error) throw error;
-
-      if (quizResults && quizResults.length > 0) {
-        const averageScore = quizResults.reduce((acc, result) => acc + result.score, 0) / quizResults.length;
-        const subjectMap = new Map<string, { totalScore: number; count: number }>();
-        quizResults.forEach((result) => {
-          const existing = subjectMap.get(result.subject) || { totalScore: 0, count: 0 };
-          subjectMap.set(result.subject, {
-            totalScore: existing.totalScore + result.score,
-            count: existing.count + 1,
-          });
-        });
-
-        const subjectPerformance = Array.from(subjectMap.entries()).map(([subject, data]) => ({
-          subject: subject.charAt(0).toUpperCase() + subject.slice(1),
-          avgScore: Math.round(data.totalScore / data.count),
-          count: data.count,
-        }));
-
-        const analytics: ChildAnalytics = {
-          studentId,
-          averageScore: Math.round(averageScore),
-          totalQuizzes: quizResults.length,
-          subjectPerformance,
-          recentQuizzes: quizResults.slice(0, 5) as QuizResult[],
-        };
-
-        setChildrenAnalytics((prev) => new Map(prev).set(studentId, analytics));
-
-        const activitiesWithName = quizResults.map(q => ({ ...q, student_name: studentName })) as QuizResult[];
-
-        setGlobalActivities(prev => {
-          const combined = [...prev, ...activitiesWithName];
-          const unique = combined.filter((activity, index, self) => 
-            self.findIndex(a => a.id === activity.id) === index
-          );
-          return unique.sort((a, b) => new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime()).slice(0, 3);
-        });
-      }
-    } catch (error) {
-      console.error("Error fetching child analytics:", error);
-    }
-  };
-
-  const fetchChildAssignments = async (studentId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("practice_assignments")
-        .select("*")
-        .eq("student_id", studentId)
-        .order("created_at", { ascending: false })
-        .limit(5);
-
-      if (error) throw error;
-
-      setLinkedChildren((prev) =>
-        prev.map((child) =>
-          child.id === studentId ? { ...child, assignments: data as Assignment[] } : child
-        )
-      );
-    } catch (error) {
-      console.error("Error fetching child assignments:", error);
     }
   };
 
@@ -330,6 +422,17 @@ export default function ParentDashboard() {
               </div>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* Weekly Parent Growth Digest (PRD §10.1 & Phase 3 Epic PAR-01) */}
+      {!isLoading && linkedChildren.length > 0 && parentId && (
+        <div className="mb-8">
+          <WeeklyGrowthDigestCard
+            parentId={parentId}
+            studentId={linkedChildren[0].id}
+            studentName={linkedChildren[0].profile?.full_name || "Your Child"}
+          />
         </div>
       )}
 
@@ -476,44 +579,72 @@ export default function ParentDashboard() {
               </Button>
             </div>
 
+            {linkedChildren.length > 1 && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                {linkedChildren.map((child, index) => {
+                  const isActive = (activeChildIndex === index) || (activeChildIndex >= linkedChildren.length && index === 0);
+                  return (
+                    <Button
+                      key={child.id}
+                      variant={isActive ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setActiveChildIndex(index)}
+                      className={`rounded-xl font-bold text-xs transition-all ${isActive ? 'bg-primary text-primary-foreground shadow-sm' : 'border-border/60 hover:bg-primary/10'}`}
+                    >
+                      {child.profile?.full_name || `Child ${index + 1}`}
+                      {child.is_premium && (
+                        <span className="ml-1.5 rounded-full bg-amber-500/20 px-1.5 py-0.2 text-[9px] font-black text-amber-500">PRO</span>
+                      )}
+                    </Button>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 gap-6">
-              {linkedChildren.slice(0, 1).map((child, index) => (
-                <ChildOverviewCard
-                  key={child.id}
-                  child={child}
-                  index={index}
-                  analytics={childrenAnalytics.get(child.id)}
-                  assignments={child.assignments}
-                  onViewReport={(c) => {
-                    setSelectedChild(c);
-                    setReportOpen(true);
-                  }}
-                  onAssignPractice={(c) => {
-                    setSelectedChild(c);
-                    setAssignOpen(true);
-                  }}
-                  onUpgradePremium={(c) => {
-                    setSelectedPaymentChild({ id: c.id, name: c.profile.full_name || "Unknown" });
-                    setPaymentModalOpen(true);
-                  }}
-                  onDeleteChild={(c) => {
-                    setManagedChild(c);
-                    setDeleteDialogOpen(true);
-                  }}
-                  onEditName={(c) => {
-                    setManagedChild(c);
-                    setEditNameOpen(true);
-                  }}
-                  onEditUsername={(c) => {
-                    setManagedChild(c);
-                    setEditUsernameOpen(true);
-                  }}
-                  onChangePassword={(c) => {
-                    setManagedChild(c);
-                    setChangePasswordOpen(true);
-                  }}
-                />
-              ))}
+              {(() => {
+                const effectiveIndex = activeChildIndex < linkedChildren.length ? activeChildIndex : 0;
+                const child = linkedChildren[effectiveIndex];
+                if (!child) return null;
+                return (
+                  <ChildOverviewCard
+                    key={child.id}
+                    child={child}
+                    index={effectiveIndex}
+                    analytics={childrenAnalytics.get(child.id)}
+                    assignments={child.assignments}
+                    onViewReport={(c) => {
+                      setSelectedChild(c);
+                      setReportOpen(true);
+                    }}
+                    onAssignPractice={(c) => {
+                      setSelectedChild(c);
+                      setAssignOpen(true);
+                    }}
+                    onUpgradePremium={(c) => {
+                      setSelectedPaymentChild({ id: c.id, name: c.profile.full_name || "Unknown" });
+                      setPaymentModalOpen(true);
+                    }}
+                    onDeleteChild={(c) => {
+                      setManagedChild(c);
+                      setDeleteDialogOpen(true);
+                    }}
+                    onEditName={(c) => {
+                      setManagedChild(c);
+                      setEditNameOpen(true);
+                    }}
+                    onEditUsername={(c) => {
+                      setManagedChild(c);
+                      setEditUsernameOpen(true);
+                    }}
+                    onChangePassword={(c) => {
+                      setManagedChild(c);
+                      setChangePasswordOpen(true);
+                    }}
+                    onReviewAssignment={handleReviewAssignment}
+                  />
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -578,6 +709,20 @@ export default function ParentDashboard() {
         onOpenChange={setChangePasswordOpen}
         child={managedChild}
       />
+
+      {/* Question Snapshot Review Dialog for Parent */}
+      {reviewSnapshot && (
+        <QuestionSnapshotDialog
+          open={reviewModalOpen}
+          onOpenChange={setReviewModalOpen}
+          questions={reviewSnapshot.questions}
+          userResponses={reviewSnapshot.userResponses}
+          answers={reviewSnapshot.answers}
+          subjectName={reviewSnapshot.subjectName}
+          isParentView={true}
+          childName={reviewSnapshot.childName}
+        />
+      )}
     </div>
   );
 }
