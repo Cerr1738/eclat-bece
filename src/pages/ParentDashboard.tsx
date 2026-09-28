@@ -332,61 +332,93 @@ export default function ParentDashboard() {
   };
 
   return (
-    <div className="animate-fade-in pb-12 px-2 sm:px-4">
+    <div className="space-y-6 sm:space-y-8 animate-fade-in">
       {/* Welcome Section */}
-      <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6 px-1">
-        <div className="space-y-1">
-          <h2 className="text-3xl sm:text-4xl font-black text-foreground tracking-tight">Parent Portal <span className="text-primary">.</span></h2>
-          <p className="text-muted-foreground font-medium text-sm sm:text-base">Empowering your children's educational success with data-driven insights.</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-[#2d4b68] bg-[#0c2438] px-3 py-1 text-[11px] font-semibold text-[#58c4e8]">
+            <Award className="h-3.5 w-3.5" />
+            <span>Family Portal</span>
+          </div>
+          <h1 className="mt-2 text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-[#71c9ed]">
+            Parent Overview<span className="text-[#3bc2f3]">.</span>
+          </h1>
+          <p className="mt-1 text-xs sm:text-sm text-slate-400">
+            Empower your children's BECE &amp; Common Entrance preparation with real-time analytics.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Button
+            variant="outline"
+            onClick={() => navigate("/dashboard/parent/reports")}
+            className="border-slate-700 bg-slate-900/60 text-slate-200 hover:bg-slate-800 text-xs sm:text-sm"
+          >
+            View Reports
+          </Button>
+          <Button
+            onClick={() => setAddChildOpen(true)}
+            className="bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff] font-semibold text-xs sm:text-sm"
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Add Child
+          </Button>
         </div>
       </div>
 
       {/* Top-Level Overview Metrics */}
       {!isLoading && linkedChildren.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 mb-12 animate-slide-up" style={{ animationDelay: "0.1s" }}>
-          <Card className="border-border/50 shadow-sm bg-background/50 backdrop-blur-sm rounded-[2rem] overflow-hidden group hover:border-primary/30 transition-all duration-300">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="p-4 bg-primary/10 rounded-2xl shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <Users className="h-6 w-6 text-primary" />
-              </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <Card className="border border-[#233148] bg-[#0c1628] text-slate-100 rounded-2xl min-w-0 hover:border-[#384c6e] transition-colors">
+            <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Total</p>
-                <p className="text-2xl font-black text-foreground">{totalChildren}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Children</p>
+                <p className="mt-1 text-2xl sm:text-3xl font-black text-white">{totalChildren}</p>
+                <p className="text-[11px] text-[#58c4e8] mt-0.5">Enrolled</p>
+              </div>
+              <div className="p-3 bg-[#0c2438] text-[#58c4e8] rounded-xl flex-shrink-0">
+                <Users className="h-5 w-5" />
               </div>
             </CardContent>
           </Card>
-          <Card className="border-border/50 shadow-sm bg-background/50 backdrop-blur-sm rounded-[2rem] overflow-hidden group hover:border-green-500/30 transition-all duration-300">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="p-4 bg-green-500/10 rounded-2xl shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <TrendingUp className="h-6 w-6 text-green-500" />
-              </div>
+
+          <Card className="border border-[#233148] bg-[#0c1628] text-slate-100 rounded-2xl min-w-0 hover:border-[#384c6e] transition-colors">
+            <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Performance</p>
-                <p className="text-2xl font-black text-foreground">{overallAverage}%</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Avg Score</p>
+                <p className="mt-1 text-2xl sm:text-3xl font-black text-white">{overallAverage}%</p>
+                <p className="text-[11px] text-emerald-400 mt-0.5">Overall Accuracy</p>
+              </div>
+              <div className="p-3 bg-[#102f2b] text-[#48d7b7] rounded-xl flex-shrink-0">
+                <TrendingUp className="h-5 w-5" />
               </div>
             </CardContent>
           </Card>
-          <Card className="border-border/50 shadow-sm bg-background/50 backdrop-blur-sm rounded-[2rem] overflow-hidden group hover:border-blue-500/30 transition-all duration-300">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="p-4 bg-blue-500/10 rounded-2xl shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <Target className="h-6 w-6 text-blue-500" />
-              </div>
+
+          <Card className="border border-[#233148] bg-[#0c1628] text-slate-100 rounded-2xl min-w-0 hover:border-[#384c6e] transition-colors">
+            <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Completed</p>
-                <p className="text-2xl font-black text-foreground">{totalQuizzesGlobal}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Quizzes</p>
+                <p className="mt-1 text-2xl sm:text-3xl font-black text-white">{totalQuizzesGlobal}</p>
+                <p className="text-[11px] text-[#c4a9ff] mt-0.5">Completed</p>
+              </div>
+              <div className="p-3 bg-[#2b2145] text-[#c4a9ff] rounded-xl flex-shrink-0">
+                <Target className="h-5 w-5" />
               </div>
             </CardContent>
           </Card>
-          <Card className="border-border/50 shadow-sm bg-background/50 backdrop-blur-sm rounded-[2rem] overflow-hidden group hover:border-amber-500/30 transition-all duration-300">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="p-4 bg-amber-500/10 rounded-2xl shrink-0 group-hover:scale-110 transition-transform duration-300">
-                <Award className="h-6 w-6 text-amber-500" />
-              </div>
+
+          <Card className="border border-[#233148] bg-[#0c1628] text-slate-100 rounded-2xl min-w-0 hover:border-[#384c6e] transition-colors">
+            <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Status</p>
-                <p className="text-xl font-black text-foreground leading-tight">
-                  {premiumChildrenCount} <span className="text-xs font-bold text-muted-foreground opacity-60">PREMIUM</span>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Plan</p>
+                <p className="mt-1 text-2xl sm:text-3xl font-black text-white">
+                  {premiumChildrenCount} <span className="text-xs font-bold text-amber-400">VIP</span>
                 </p>
+                <p className="text-[11px] text-[#ffca6a] mt-0.5">Premium Learners</p>
+              </div>
+              <div className="p-3 bg-[#352813] text-[#ffca6a] rounded-xl flex-shrink-0">
+                <Award className="h-5 w-5" />
               </div>
             </CardContent>
           </Card>
@@ -407,59 +439,143 @@ export default function ParentDashboard() {
       {/* Children Overview */}
       {isLoading ? (
         <div className="text-center py-12">
-          <p className="text-muted-foreground">Loading your children...</p>
+          <p className="text-slate-400 text-sm">Loading your family data...</p>
         </div>
       ) : linkedChildren.length === 0 ? (
-        <Card className="border-2 border-dashed">
-          <CardContent className="py-20 text-center flex flex-col items-center justify-center bg-gradient-to-b from-card to-muted/20">
-            <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6">
-              <Users className="h-12 w-12 text-primary" />
+        <Card className="border-2 border-dashed border-[#26344d] bg-[#0c1628] text-slate-100 rounded-2xl">
+          <CardContent className="py-16 text-center flex flex-col items-center justify-center">
+            <div className="w-20 h-20 bg-[#0c2438] text-[#58c4e8] rounded-full flex items-center justify-center mb-5">
+              <Users className="h-10 w-10" />
             </div>
-            <h3 className="text-2xl font-bold mb-3">Welcome to your Parent Portal!</h3>
-            <p className="text-muted-foreground mb-8 max-w-md mx-auto text-lg">
-              Let's get started by creating an account for your child. Once connected, you can track their progress and assign practice.
+            <h3 className="text-xl sm:text-2xl font-bold text-[#71c9ed] mb-2">Welcome to your Parent Portal!</h3>
+            <p className="text-slate-400 mb-6 max-w-md mx-auto text-xs sm:text-sm">
+              Connect or create an account for your child. Once linked, you can monitor exam readiness, track strengths, and assign targeted drills.
             </p>
-            <Button size="lg" variant="hero" onClick={() => setAddChildOpen(true)} className="text-lg px-8 py-6 rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all">
-              <Plus className="mr-2" size={24} />
+            <Button
+              onClick={() => setAddChildOpen(true)}
+              className="bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff] font-semibold px-6 py-2.5 rounded-xl shadow-lg"
+            >
+              <Plus className="mr-2 h-4 w-4" />
               Create First Child Account
             </Button>
+
+            {parentCode && (
+              <div className="mt-8 pt-6 border-t border-[#1d2a40] max-w-sm w-full">
+                <p className="text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1">Or link existing student account</p>
+                <p className="text-xs text-slate-400 mb-3">Share this Parent Link Code with your child:</p>
+                <code className="block border border-dashed border-[#31506c] bg-[#091426] px-3 py-3 text-center text-xl font-bold tracking-[0.25em] text-[#71c9ed] rounded-xl select-all">
+                  {parentCode}
+                </code>
+                <Button
+                  onClick={handleCopyCode}
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 w-full border-[#2d4b68] bg-[#091426] hover:bg-[#15273f] hover:border-[#3bc2f3] text-slate-200 font-semibold"
+                >
+                  {copiedCode ? (
+                    <>
+                      <Check className="mr-2 h-4 w-4 text-emerald-400" />
+                      copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="mr-2 h-4 w-4 text-[#58c4e8]" />
+                      copy code
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       ) : (
-        <div className="flex flex-col gap-12">
-          {/* Activity Feed Section */}
-          <div className="space-y-6 animate-slide-up" style={{ animationDelay: "0.2s" }}>
-            <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-1.5 bg-primary rounded-full" />
-                <h3 className="text-2xl font-black text-foreground tracking-tight uppercase">Recent Activities</h3>
+        <div className="flex flex-col gap-8 sm:gap-10">
+          {/* Recent Activities & Parent Link Code Section (Matching Student Dashboard) */}
+          <section className="grid gap-6 lg:grid-cols-[1fr_300px]">
+            {/* Activity Feed Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-5 w-1 bg-[#3bc2f3] rounded-full" />
+                  <h3 className="text-lg sm:text-xl font-black text-[#71c9ed] tracking-tight">Recent Activities</h3>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate("/dashboard/parent/activities")}
+                  className="text-xs font-semibold text-[#58c4e8] hover:text-white hover:bg-[#15233c] rounded-xl"
+                >
+                  View All <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate("/dashboard/parent/activities")}
-                className="rounded-xl font-bold text-primary hover:bg-primary/10 transition-colors"
-              >
-                View All <ChevronRight className="ml-1 h-4 w-4" />
-              </Button>
+              <ParentActivityFeed activities={globalActivities} isLoading={isLoading} />
             </div>
-            <ParentActivityFeed activities={globalActivities} isLoading={isLoading} />
-          </div>
+
+            {/* Parent Link Code Card - Matching Student Dashboard */}
+            <div className="space-y-4 flex flex-col">
+              <div className="flex items-center gap-2.5">
+                <div className="h-5 w-1 bg-[#3bc2f3] rounded-full" />
+                <h3 className="text-lg sm:text-xl font-black text-[#71c9ed] tracking-tight">Parent Link Code</h3>
+              </div>
+              <div className="rounded-2xl border border-[#233148] bg-[#0c1628] p-5 text-slate-100 flex flex-col justify-between flex-1">
+                <div>
+                  <h2 className="text-base sm:text-lg font-semibold text-[#71c9ed]">Parent Link Code</h2>
+                  <p className="mt-1 text-xs text-slate-400">Share this code with your child to connect accounts</p>
+                  {parentCode ? (
+                    <>
+                      <code className="mt-5 block border border-dashed border-[#31506c] bg-[#091426] px-3 py-4 text-center text-2xl font-bold tracking-[0.25em] text-[#71c9ed] rounded-xl select-all">
+                        {parentCode}
+                      </code>
+                      <Button
+                        onClick={handleCopyCode}
+                        variant="outline"
+                        className="mt-3 w-full border-[#2d4b68] bg-[#091426] hover:bg-[#15273f] hover:border-[#3bc2f3] text-slate-200 font-semibold"
+                      >
+                        {copiedCode ? (
+                          <>
+                            <Check className="mr-2 h-4 w-4 text-emerald-400" />
+                            copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="mr-2 h-4 w-4 text-[#58c4e8]" />
+                            copy code
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  ) : (
+                    <p className="mt-6 text-sm text-slate-400">Your link code will appear here.</p>
+                  )}
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-[#1d2a40] space-y-1.5 text-xs text-slate-400">
+                  <p className="flex items-center gap-2 text-slate-300 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#3bc2f3]" />
+                    How to connect:
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-slate-400">
+                    Children can link your account by entering this code in their dashboard under settings or during sign-up.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
 
           {/* My Children Section */}
-          <div id="children" className="space-y-6 scroll-mt-24 animate-slide-up" style={{ animationDelay: "0.3s" }}>
-            <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-1.5 bg-primary rounded-full" />
-                <h3 className="text-2xl font-black text-foreground tracking-tight uppercase">My Children</h3>
+          <div id="children" className="space-y-4 scroll-mt-24">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="h-5 w-1 bg-[#3bc2f3] rounded-full" />
+                <h3 className="text-lg sm:text-xl font-black text-[#71c9ed] tracking-tight">My Children</h3>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => navigate("/dashboard/parent/children")}
-                className="rounded-xl font-bold text-primary hover:bg-primary/10 transition-colors"
+                className="text-xs font-semibold text-[#58c4e8] hover:text-white hover:bg-[#15233c] rounded-xl"
               >
-                View All <ChevronRight className="ml-1 h-4 w-4" />
+                View All <ChevronRight className="ml-1 h-3.5 w-3.5" />
               </Button>
             </div>
 

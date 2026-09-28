@@ -10,7 +10,7 @@ const Index = () => {
   const { handleLoginClick, handleGetStartedClick } = usePublicAuthAction();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-white dark:bg-[#080f22] text-slate-900 dark:text-slate-100 selection:bg-[#3bc2f3] selection:text-slate-950 font-sans transition-colors duration-200">
       <Navigation onLoginClick={handleLoginClick} onGetStartedClick={handleGetStartedClick} />
       <Hero onGetStartedClick={handleGetStartedClick} />
       <Features />

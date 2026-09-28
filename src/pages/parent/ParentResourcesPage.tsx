@@ -81,7 +81,7 @@ export default function ParentResourcesPage() {
 
       if (error) throw error;
 
-      toast.success("Support request sent! We will contact you via email shortly.");
+      toast.success("Support request sent! Our academic support team will contact you shortly.");
       setSupportMessage("");
     } catch (error: any) {
       console.error("Error sending support email:", error);
@@ -174,6 +174,12 @@ export default function ParentResourcesPage() {
               </button>
             )}
           </div>
+          <h1 className="mt-2 text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-[#71c9ed]">
+            Help &amp; Support Hub<span className="text-[#3bc2f3]">.</span>
+          </h1>
+          <p className="mt-1 text-xs sm:text-sm text-slate-400">
+            Curriculum breakdowns, syllabus guidelines, and direct assistance for parents.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-muted-foreground">
@@ -275,10 +281,12 @@ export default function ParentResourcesPage() {
           <Card className="parent-panel rounded-[1.75rem] border border-border/60 bg-card/60 p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-muted-foreground">Direct Assistance</div>
-                <h3 className="mt-2 text-2xl font-black text-foreground">Contact Support Desk</h3>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Direct Assistance</span>
+                <h3 className="text-base sm:text-lg font-bold text-[#71c9ed] mt-0.5">Parent Support Desk</h3>
               </div>
-              <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">Advisors online</div>
+              <span className="rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold">
+                Online
+              </span>
             </div>
 
             <div className="mt-5 rounded-2xl border border-border/60 bg-background/40 p-4">

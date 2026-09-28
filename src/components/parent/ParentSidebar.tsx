@@ -2,16 +2,16 @@ import { LayoutDashboard, Users, ClipboardCheck, BarChart3, CreditCard, HelpCirc
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import {
-    Sidebar,
-    SidebarContent,
-    SidebarFooter,
-    SidebarGroup,
-    SidebarGroupContent,
-    SidebarGroupLabel,
-    SidebarMenu,
-    SidebarMenuItem,
-    SidebarMenuButton,
-    useSidebar,
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -26,19 +26,19 @@ const menuItems = [
 ];
 
 export function ParentSidebar() {
-    const location = useLocation();
-    const navigate = useNavigate();
-    const { signOut } = useAuth();
-    const { state, toggleSidebar } = useSidebar();
-    const currentPath = location.pathname;
-    const isCollapsed = state === "collapsed";
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { signOut } = useAuth();
+  const { state, toggleSidebar } = useSidebar();
+  const currentPath = location.pathname;
+  const isCollapsed = state === "collapsed";
 
-    const isActive = (url: string) => {
-        if (url.includes("#")) {
-            return currentPath + location.hash === url;
-        }
-        return currentPath === url && !location.hash;
-    };
+  const isActive = (url: string) => {
+    if (url.includes("#")) {
+      return currentPath + location.hash === url;
+    }
+    return currentPath === url && !location.hash;
+  };
 
     return (
         <Sidebar collapsible="icon" className="border-r border-border/50 bg-sidebar text-sidebar-foreground shadow-[inset_0_0_0_1px_rgba(141,191,255,0.06)]">
@@ -96,16 +96,23 @@ export function ParentSidebar() {
                             onClick={signOut}
                             className="h-11 w-full justify-start rounded-xl text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
                         >
-                            <LogOut className={`${isCollapsed ? 'h-5 w-5' : 'mr-3 h-5 w-5'} transition-transform group-hover:-translate-x-1`} />
-                            {!isCollapsed && <span className="text-[15px] font-medium">Sign Out</span>}
-                        </Button>
-                    </TooltipTrigger>
-                    {isCollapsed && (
-                        <TooltipContent side="right" className="bg-destructive text-destructive-foreground font-medium">
-                            <p>Sign Out</p>
+                          <Icon className={isCollapsed ? "" : "mr-2 h-4 w-4"} />
+                          {!isCollapsed && <span>{item.title}</span>}
+                        </SidebarMenuButton>
+                      </TooltipTrigger>
+                      {isCollapsed && (
+                        <TooltipContent side="right">
+                          <p>{item.title}</p>
                         </TooltipContent>
-                    )}
-                </Tooltip>
+                      )}
+                    </Tooltip>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
 
                 <Button
                     variant="ghost"

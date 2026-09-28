@@ -411,7 +411,7 @@ export default function SchoolDashboard() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={signOut}
+              onClick={() => signOut()}
               className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10 font-bold"
             >
               <LogOut size={16} />
@@ -422,13 +422,13 @@ export default function SchoolDashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="w-full px-4 py-8">
         {!selectedCohort ? (
           <>
             {/* School Greeting & Subtitle */}
             <div className="mb-6 animate-fade-in flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h1 className="text-3xl sm:text-4xl font-black text-foreground tracking-tight">
+                <h1 className="text-3xl sm:text-4xl font-black text-[#71c9ed] tracking-tight">
                   {school?.school_name || "School Dashboard"}
                 </h1>
                 <p className="text-muted-foreground mt-1 text-sm sm:text-base">
@@ -785,7 +785,7 @@ export default function SchoolDashboard() {
 
             <div className="mb-8 animate-fade-in flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-3xl font-black text-foreground mb-1">{currentSelectedName}</h2>
+                <h2 className="text-3xl font-black text-[#71c9ed] mb-1">{currentSelectedName}</h2>
                 <p className="text-muted-foreground text-sm">
                   Manage enrolled scholars, monitor Four-Pillar gamification progress, and assign targeted practice.
                 </p>
@@ -860,7 +860,7 @@ export default function SchoolDashboard() {
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <h4 className="font-bold text-base text-foreground">{student.name}</h4>
+                              <h4 className="font-bold text-base text-[#71c9ed]">{student.name}</h4>
                               {student.is_premium && (
                                 <Badge className="bg-gradient-hero text-[10px] py-0">PRO</Badge>
                               )}

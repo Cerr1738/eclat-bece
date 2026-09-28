@@ -80,7 +80,7 @@ export function StudentSidebar() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={signOut}
+              onClick={() => signOut()}
               className="mb-2 w-full justify-start text-slate-300 hover:bg-red-500/10 hover:text-red-300"
             >
               <LogOut className={isCollapsed ? "h-4 w-4" : "mr-2 h-4 w-4"} />

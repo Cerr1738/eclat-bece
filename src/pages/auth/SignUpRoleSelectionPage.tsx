@@ -1,5 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, ArrowLeft, Building2, GraduationCap, Users } from "lucide-react";
+import { useTheme } from "next-themes";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import eclatlLogo from "@/assets/logo.png";
 import { useRedirectIfAuthenticated } from "@/hooks/useRedirectIfAuthenticated";
 
@@ -31,7 +33,10 @@ export default function SignUpRoleSelectionPage({ login = false }: { login?: boo
   const roles = login ? allRoles : allRoles.filter((r) => r.id !== "student");
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#081328] p-0 font-sans text-[#dce7ff]">
+    <main className="flex min-h-screen items-center justify-center bg-[#081328] p-0 font-sans text-[#dce7ff] relative">
+      <div className="absolute right-4 top-4 z-50">
+        <ThemeToggle className="text-slate-200 hover:text-white" />
+      </div>
       <section className="relative flex min-h-screen w-full flex-col overflow-hidden bg-[#081328]">
         <div className="flex flex-1 flex-col items-center px-6 pb-10 pt-14 sm:px-12 sm:pt-20 lg:px-[92px] lg:pt-[82px]">
           <div className="animate-fade-in text-center">

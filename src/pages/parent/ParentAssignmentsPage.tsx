@@ -642,6 +642,7 @@ export default function ParentAssignmentsPage() {
               )}
             </div>
           </div>
+        </div>
 
           {/* Right Column: Completed / Recent Submissions */}
           <div className="space-y-6">

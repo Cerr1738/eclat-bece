@@ -418,7 +418,7 @@ export default function StudentDashboardOverview() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-5 py-8 text-slate-100 sm:px-8">
+    <div className="w-full px-5 py-8 text-slate-100 sm:px-8">
       <section className="relative mb-7 overflow-hidden rounded-xl border border-[#25344d] bg-[#101c31] px-6 py-7 shadow-2xl sm:px-8">
         <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_center,rgba(14,157,204,.22),transparent_65%)]" />
         <div className="relative max-w-xl">

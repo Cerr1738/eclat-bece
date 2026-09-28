@@ -613,8 +613,13 @@ export default function ParentReportsPage() {
                 </div>
               )}
             </div>
+            <button
+              onClick={handleExportPDF}
+              className="text-xs font-semibold text-[#58c4e8] hover:text-white flex items-center gap-1 self-start sm:self-center"
+            >
+              <Download className="h-3.5 w-3.5" /> Download all results
+            </button>
           </div>
-        </div>
 
         {/* Right Column: Subject Breakdown List */}
         <div className="space-y-6 print:space-y-4">

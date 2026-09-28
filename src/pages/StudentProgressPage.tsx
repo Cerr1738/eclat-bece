@@ -282,7 +282,7 @@ export default function StudentProgressPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
+    <div className="w-full px-4 py-8">
       <div className="mb-8 animate-fade-in">
         <h2 className="text-3xl sm:text-4xl font-black text-foreground tracking-tight flex items-center gap-2">
           <TrendingUp className="text-accent" size={32} />

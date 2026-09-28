@@ -68,47 +68,47 @@ export function ChildOverviewCard({
 
     return (
         <Card
-            className="group border-2 hover:border-primary/30 hover:shadow-xl transition-all duration-300 animate-scale-in overflow-hidden relative"
+            className="group border border-[#233148] bg-[#0c1628] text-slate-100 hover:border-[#384c6e] hover:shadow-2xl transition-all duration-300 rounded-2xl overflow-hidden relative"
             style={{ animationDelay: `${index * 0.1}s` }}
         >
             {child.is_premium && (
-                <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-amber-400 to-amber-600 z-10" title="Premium Student" />
+                <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-amber-400 to-amber-600 z-10" title="Premium Student" />
             )}
 
-            <CardHeader className="pb-4">
+            <CardHeader className="pb-4 border-b border-[#1e2c45]">
                 <div className="flex flex-col gap-4">
                     <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-center gap-4 min-w-0">
+                        <div className="flex items-center gap-3.5 min-w-0">
                             <div className={`
-                                h-14 w-14 sm:h-16 sm:w-16 rounded-2xl flex items-center justify-center text-2xl font-black text-white shrink-0 shadow-lg 
-                                transition-transform group-hover:rotate-3 group-hover:scale-110 duration-300
-                                ${child.is_premium ? 'bg-gradient-to-br from-amber-400 to-amber-600' : 'bg-gradient-hero'}
+                                h-12 w-12 sm:h-14 sm:w-14 rounded-2xl flex items-center justify-center text-xl sm:text-2xl font-black text-white shrink-0 shadow-lg 
+                                transition-transform group-hover:scale-105 duration-300
+                                ${child.is_premium ? 'bg-gradient-to-br from-amber-400 to-amber-600 text-slate-900' : 'bg-gradient-to-br from-[#3bc2f3] to-[#0c9dcc] text-[#041c2d]'}
                             `}>
                                 {initials}
                             </div>
-                            <div className="space-y-1.5 min-w-0">
+                            <div className="space-y-1 min-w-0">
                                 <CardTitle
-                                    className="text-xl sm:text-2xl font-black tracking-tight text-foreground truncate"
+                                    className="text-lg sm:text-xl font-black tracking-tight text-[#71c9ed] truncate"
                                     title={child.profile.full_name || "Unknown"}
                                 >
                                     {child.profile.full_name || "Unknown"}
                                 </CardTitle>
                                 <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                                     {child.is_premium ? (
-                                        <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 uppercase font-black text-[10px] py-0.5 whitespace-nowrap">
+                                        <span className="rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 uppercase font-black text-[10px] px-2.5 py-0.5 whitespace-nowrap">
                                             Premium
-                                        </Badge>
+                                        </span>
                                     ) : (
-                                        <Badge variant="outline" className="text-muted-foreground uppercase font-bold text-[10px] py-0.5 whitespace-nowrap">
+                                        <span className="rounded-full bg-slate-800 text-slate-400 border border-slate-700 uppercase font-bold text-[10px] px-2.5 py-0.5 whitespace-nowrap">
                                             Standard
-                                        </Badge>
+                                        </span>
                                     )}
-                                    <span className="inline-flex items-center rounded-lg bg-primary/10 px-2 py-0.5 text-[10px] font-black text-primary border border-primary/20 uppercase whitespace-nowrap">
-                                        {child.class_year === "year_6" ? "Year 6" : child.class_year === "year_9" ? "Year 9" : "N/A"}
+                                    <span className="inline-flex items-center rounded-full bg-[#0c2438] border border-[#2d4b68] px-2.5 py-0.5 text-[10px] font-bold text-[#58c4e8] uppercase whitespace-nowrap">
+                                        {child.class_year === "year_6" ? "Year 6" : child.class_year === "year_9" ? "Year 9" : "General"}
                                     </span>
-                                    <div className="flex items-center gap-2 min-w-0">
+                                    <div className="flex items-center gap-1.5 min-w-0">
                                         <span
-                                            className="text-[10px] font-mono text-muted-foreground/60 bg-muted/30 px-2 py-0.5 rounded-lg border border-border/50 whitespace-nowrap cursor-pointer hover:bg-muted/50 transition-colors active:scale-95 touch-none selection:bg-transparent"
+                                            className="text-[10px] font-mono text-slate-400 bg-[#0d162a] px-2 py-0.5 rounded-md border border-[#26344d] whitespace-nowrap cursor-pointer hover:bg-[#15233c] hover:text-white transition-colors active:scale-95"
                                             title={`Click to copy: ${child.profile.unique_id}`}
                                             onClick={handleCopyId}
                                         >
@@ -116,11 +116,11 @@ export function ChildOverviewCard({
                                         </span>
                                         {child.profile.username && (
                                             <span
-                                                className="text-[10px] font-mono text-muted-foreground/60 bg-muted/30 px-2 py-0.5 rounded-lg border border-border/50 truncate max-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors active:scale-95 touch-none selection:bg-transparent"
+                                                className="text-[10px] font-mono text-slate-400 bg-[#0d162a] px-2 py-0.5 rounded-md border border-[#26344d] truncate max-w-[120px] cursor-pointer hover:bg-[#15233c] hover:text-white transition-colors active:scale-95"
                                                 title={`Click to copy: ${child.profile.username}`}
                                                 onClick={handleCopyUsername}
                                             >
-                                                {child.profile.username}
+                                                @{child.profile.username}
                                             </span>
                                         )}
                                     </div>
@@ -130,14 +130,14 @@ export function ChildOverviewCard({
 
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="rounded-full h-10 w-10 shrink-0">
-                                    <MoreVertical size={20} className="text-muted-foreground" />
+                                <Button variant="ghost" size="icon" className="rounded-full h-9 w-9 shrink-0 text-slate-400 hover:text-white hover:bg-[#15233c]">
+                                    <MoreVertical size={18} />
                                 </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48 rounded-xl p-1 shadow-xl border-border/50 backdrop-blur-md">
+                            <DropdownMenuContent align="end" className="w-48 rounded-xl p-1.5 shadow-2xl border border-[#233148] bg-[#0c1628] text-slate-200">
                                 {!child.is_premium && (
                                     <DropdownMenuItem
-                                        className="rounded-lg text-amber-600 dark:text-amber-400 font-black flex items-center gap-2"
+                                        className="rounded-lg text-amber-400 font-bold flex items-center gap-2 hover:bg-[#15233c] hover:text-amber-300"
                                         onClick={() => onUpgradePremium(child)}
                                     >
                                         <CreditCard size={14} />
@@ -145,28 +145,28 @@ export function ChildOverviewCard({
                                     </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem
-                                    className="rounded-lg font-bold flex items-center gap-2"
+                                    className="rounded-lg font-semibold flex items-center gap-2 hover:bg-[#15233c] hover:text-white"
                                     onClick={() => onEditName(child)}
                                 >
                                     <User size={14} />
                                     Edit Name
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                    className="rounded-lg font-bold flex items-center gap-2"
+                                    className="rounded-lg font-semibold flex items-center gap-2 hover:bg-[#15233c] hover:text-white"
                                     onClick={() => onChangePassword(child)}
                                 >
                                     <Key size={14} />
                                     Change Password
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                    className="rounded-lg font-bold flex items-center gap-2"
+                                    className="rounded-lg font-semibold flex items-center gap-2 hover:bg-[#15233c] hover:text-white"
                                     onClick={() => onEditUsername(child)}
                                 >
                                     <Fingerprint size={14} />
                                     Edit Username
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                    className="rounded-lg text-destructive font-bold focus:bg-destructive/10 focus:text-destructive flex items-center gap-2"
+                                    className="rounded-lg text-rose-400 font-semibold focus:bg-rose-500/10 focus:text-rose-300 hover:bg-rose-500/10 hover:text-rose-300 flex items-center gap-2"
                                     onClick={() => onDeleteChild(child)}
                                 >
                                     <Trash2 size={14} />
@@ -176,19 +176,18 @@ export function ChildOverviewCard({
                         </DropdownMenu>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1 border-t border-border/40 sm:border-none sm:pt-0">
+                    <div className="flex items-center gap-2 pt-1 border-t border-[#1e2c45] sm:border-none sm:pt-0">
                         <Button
                             variant="outline"
                             size="sm"
-                            className="flex-1 sm:flex-none rounded-xl font-bold border-2 h-9 hover:bg-muted"
+                            className="flex-1 sm:flex-none rounded-xl font-semibold border-slate-700 bg-slate-900/60 text-xs text-slate-200 hover:bg-slate-800 h-8"
                             onClick={() => onViewReport(child)}
                         >
                             View Report
                         </Button>
                         <Button
-                            variant="hero"
                             size="sm"
-                            className="flex-1 sm:flex-none rounded-xl font-bold h-9 shadow-lg shadow-primary/20 bg-primary text-white"
+                            className="flex-1 sm:flex-none rounded-xl font-semibold text-xs h-8 bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff]"
                             onClick={() => onAssignPractice(child)}
                         >
                             Assign Task
@@ -197,7 +196,7 @@ export function ChildOverviewCard({
                 </div>
             </CardHeader>
 
-            <CardContent className="space-y-6 pt-2">
+            <CardContent className="space-y-5 pt-4">
                 {/* Homework & Assignments Tracking */}
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
@@ -259,9 +258,9 @@ export function ChildOverviewCard({
                                                 )}
                                             </>
                                         ) : (
-                                            <Badge variant="outline" className="text-primary border-primary/20 font-black text-[10px] animate-pulse">
+                                            <span className="rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30 px-2 py-0.5 font-bold text-[10px]">
                                                 PENDING
-                                            </Badge>
+                                            </span>
                                         )}
                                     </div>
                                 </div>
@@ -324,47 +323,48 @@ export function ChildOverviewCard({
                             </div>
                         </div>
 
-
                         {/* Performance Visualizer (Chart) */}
                         {analytics.subjectPerformance.length > 0 && (
-                            <div className="space-y-3">
+                            <div className="space-y-2.5">
                                 <div className="flex items-center justify-between">
-                                    <h4 className="font-black text-[11px] uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full bg-primary/60" />
+                                    <h4 className="font-bold text-[11px] uppercase tracking-wider text-[#71c9ed] flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-[#3bc2f3]" />
                                         Subject Mastery
                                     </h4>
-                                    <Button variant="link" className="h-auto p-0 text-[10px] font-black uppercase text-primary" onClick={() => onViewReport(child)}>
-                                        Full Analysis <ChevronRight size={10} className="ml-0.5" />
-                                    </Button>
+                                    <button
+                                        type="button"
+                                        className="text-[10px] font-bold uppercase text-[#58c4e8] hover:text-white flex items-center gap-0.5"
+                                        onClick={() => onViewReport(child)}
+                                    >
+                                        Full Analysis <ChevronRight size={12} />
+                                    </button>
                                 </div>
-                                <div className="h-[140px] w-full bg-muted/20 rounded-[2rem] border border-border/50 p-4 shadow-inner relative overflow-hidden group/chart">
-                                    <div className="absolute inset-0 bg-gradient-to-t from-background/20 to-transparent opacity-0 group-hover/chart:opacity-100 transition-opacity" />
+                                <div className="h-[130px] w-full bg-[#080f22] rounded-2xl border border-[#202b43] p-3 relative overflow-hidden">
                                     <ChartContainer
                                         config={{
                                             avgScore: {
                                                 label: "Average Score",
-                                                color: "hsl(var(--primary))",
+                                                color: "#3bc2f3",
                                             },
                                         }}
                                         className="h-full w-full aspect-auto"
                                     >
                                         <ResponsiveContainer width="100%" height="100%">
                                             <BarChart data={analytics.subjectPerformance} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                                                <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="hsl(var(--border))" opacity={0.3} />
+                                                <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#202b43" opacity={0.6} />
                                                 <XAxis
                                                     dataKey="subject"
                                                     axisLine={false}
                                                     tickLine={false}
-                                                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10, fontWeight: 700 }}
-                                                    dy={10}
+                                                    tick={{ fill: "#94a3b8", fontSize: 9, fontWeight: 600 }}
+                                                    dy={8}
                                                 />
-                                                <ChartTooltip cursor={{ fill: 'var(--primary)', opacity: 0.1 }} content={<ChartTooltipContent valueFormatter={(val) => `${val}%`} />} />
+                                                <ChartTooltip cursor={{ fill: 'rgba(59, 194, 243, 0.1)' }} content={<ChartTooltipContent valueFormatter={(val) => `${val}%`} />} />
                                                 <Bar
                                                     dataKey="avgScore"
-                                                    fill="hsl(var(--primary))"
-                                                    radius={[6, 6, 0, 0]}
-                                                    maxBarSize={32}
-                                                    animationDuration={1500}
+                                                    fill="#3bc2f3"
+                                                    radius={[4, 4, 0, 0]}
+                                                    maxBarSize={28}
                                                 />
                                             </BarChart>
                                         </ResponsiveContainer>
@@ -374,16 +374,20 @@ export function ChildOverviewCard({
                         )}
                     </div>
                 ) : assignments.length === 0 ? (
-                    <div className="text-center py-10 px-4 bg-muted/30 rounded-[2.5rem] border border-dashed border-border/60 transition-colors group-hover:bg-muted/40">
-                        <div className="w-16 h-16 bg-background rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm group-hover:rotate-12 transition-transform">
-                            <BookOpen className="h-8 w-8 text-muted-foreground/30" />
+                    <div className="text-center py-6 px-4 bg-[#080f22] rounded-2xl border border-dashed border-[#202b43]">
+                        <div className="w-12 h-12 bg-[#0c1628] border border-[#233148] rounded-full flex items-center justify-center mx-auto mb-2 text-[#58c4e8]">
+                            <BookOpen className="h-6 w-6" />
                         </div>
-                        <p className="font-black text-xs uppercase tracking-widest text-foreground/60 mb-1">Learning Journey Starting</p>
-                        <p className="text-[11px] text-muted-foreground max-w-[200px] mx-auto leading-relaxed font-medium">
-                            Real-time performance analytics will activate once practice sessions begin.
+                        <p className="font-bold text-xs uppercase tracking-wider text-slate-200 mb-0.5">Ready for Practice</p>
+                        <p className="text-[11px] text-slate-400 max-w-[220px] mx-auto leading-relaxed">
+                            Performance stats and topic analytics will appear once practice sessions start.
                         </p>
-                        <Button variant="hero" size="sm" className="mt-4 rounded-xl font-black text-xs h-10 px-6 uppercase tracking-wider" onClick={() => onAssignPractice(child)}>
-                            ASSIGN FIRST TASK
+                        <Button
+                            size="sm"
+                            className="mt-3 rounded-xl font-semibold text-xs h-8 px-4 bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff]"
+                            onClick={() => onAssignPractice(child)}
+                        >
+                            Assign First Drill
                         </Button>
                     </div>
                 ) : null}
