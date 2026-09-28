@@ -49,7 +49,7 @@ export default function StudentAssignments() {
   }, [user]);
 
   return (
-    <div className="mx-auto max-w-6xl py-8 text-slate-100 sm:px-8">
+    <div className="w-full py-8 text-slate-100 sm:px-8">
       <div className="mb-7 animate-fade-in">
         <h2 className="flex items-center gap-2 text-2xl font-bold tracking-tight sm:text-3xl">Practice Assignments <span className="text-[#71c9ed]">·</span></h2>
         <p className="mt-1 text-sm text-slate-400">Complete your assigned practice sessions</p>

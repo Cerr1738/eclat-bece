@@ -1,3 +1,4 @@
+import { useState, type ReactNode } from "react";
 import { Trophy, Calendar, Crown, Clock, Medal } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -82,7 +83,7 @@ export const CompetitionLeaderboards = ({
 
   const renderLeaderboard = (
     leaders: LeaderboardStudent[], 
-    icon: React.ReactNode, 
+    icon: ReactNode, 
     prizeInfo: string,
     currentRank: number,
     currentPoints: number,

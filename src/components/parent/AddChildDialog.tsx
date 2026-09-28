@@ -97,29 +97,30 @@ export function AddChildDialog({ open, onOpenChange, parentId, onSuccess }: AddC
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[440px] bg-[#0c1628] border border-[#233148] text-slate-100 rounded-2xl">
                 <DialogHeader>
-                    <DialogTitle>{createdChildCredentials ? "Student Account Created" : "Create Student Account"}</DialogTitle>
-                    <DialogDescription>
+                    <DialogTitle className="text-xl font-bold text-white">
+                        {createdChildCredentials ? "Student Account Created" : "Create Student Account"}
+                    </DialogTitle>
+                    <DialogDescription className="text-slate-400 text-xs sm:text-sm">
                         {createdChildCredentials
                             ? "Please save these login credentials. Your child will need them to log in."
                             : "Create a new student account for your child."}
                     </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 pt-4">
+                <div className="space-y-4 pt-2">
                     {createdChildCredentials ? (
-                        <div className="space-y-4 p-4 bg-muted rounded-lg border border-border">
+                        <div className="space-y-4 p-5 bg-[#080f22] rounded-xl border border-[#202b43]">
                             <div>
-                                <Label className="text-muted-foreground text-xs">Username</Label>
-                                <p className="font-mono text-lg font-medium">{createdChildCredentials.username}</p>
+                                <Label className="text-slate-400 text-xs uppercase tracking-wider font-semibold">Username</Label>
+                                <p className="font-mono text-lg font-bold text-[#71c9ed] mt-0.5">{createdChildCredentials.username}</p>
                             </div>
                             <div>
-                                <Label className="text-muted-foreground text-xs">Password</Label>
-                                <p className="font-mono text-lg font-medium">{createdChildCredentials.password}</p>
+                                <Label className="text-slate-400 text-xs uppercase tracking-wider font-semibold">Password</Label>
+                                <p className="font-mono text-lg font-bold text-[#71c9ed] mt-0.5">{createdChildCredentials.password}</p>
                             </div>
                             <Button
-                                className="w-full mt-4"
-                                variant="hero"
+                                className="w-full mt-4 bg-[#3bc2f3] text-slate-950 hover:bg-[#32ade0] font-bold rounded-xl h-11"
                                 onClick={handleClose}
                             >
                                 Done
@@ -128,40 +129,40 @@ export function AddChildDialog({ open, onOpenChange, parentId, onSuccess }: AddC
                     ) : (
                         <>
                             <div className="space-y-2">
-                                <Label htmlFor="fullName" className="text-sm font-bold">Full Name</Label>
+                                <Label htmlFor="fullName" className="text-xs font-semibold uppercase tracking-wider text-slate-300">Full Name</Label>
                                 <Input
                                     id="fullName"
                                     placeholder="e.g. Ada Okafor"
                                     value={newChildData.fullName}
                                     onChange={(e) => setNewChildData({ ...newChildData, fullName: e.target.value })}
-                                    className="rounded-xl border-2 focus:border-primary/50"
+                                    className="rounded-xl border border-[#233148] bg-[#080f22] text-slate-100 placeholder:text-slate-500 h-11 focus-visible:border-[#3bc2f3]"
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="classYear" className="text-sm font-bold">Class Year</Label>
+                                <Label htmlFor="classYear" className="text-xs font-semibold uppercase tracking-wider text-slate-300">Class Year</Label>
                                 <select
                                     id="classYear"
-                                    className="flex h-10 w-full rounded-xl border-2 border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all focus:border-primary/50"
+                                    className="flex h-11 w-full rounded-xl border border-[#233148] bg-[#080f22] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus-visible:outline-none focus-visible:border-[#3bc2f3] transition-all"
                                     value={newChildData.classYear}
                                     onChange={(e) => setNewChildData({ ...newChildData, classYear: e.target.value })}
                                 >
-                                    <option value="" disabled>Select Class Year</option>
-                                    <option value="year_6">Year 6 (Primary 6)</option>
-                                    <option value="year_9">Year 9 (JSS 3)</option>
+                                    <option value="" disabled className="bg-[#0c1628] text-slate-400">Select Class Year</option>
+                                    <option value="year_6" className="bg-[#0c1628] text-slate-100">Year 6 (Primary 6)</option>
+                                    <option value="year_9" className="bg-[#0c1628] text-slate-100">Year 9 (JSS 3)</option>
                                 </select>
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="username" className="text-sm font-bold">Student Username</Label>
+                                <Label htmlFor="username" className="text-xs font-semibold uppercase tracking-wider text-slate-300">Student Username</Label>
                                 <Input
                                     id="username"
                                     placeholder="e.g. ada.okafor"
                                     value={newChildData.username}
                                     onChange={(e) => setNewChildData({ ...newChildData, username: e.target.value })}
-                                    className="rounded-xl border-2 focus:border-primary/50"
+                                    className="rounded-xl border border-[#233148] bg-[#080f22] text-slate-100 placeholder:text-slate-500 h-11 focus-visible:border-[#3bc2f3]"
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="password" className="text-sm font-bold">Student Password</Label>
+                                <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-slate-300">Student Password</Label>
                                 <div className="relative">
                                     <Input
                                         id="password"
@@ -169,12 +170,12 @@ export function AddChildDialog({ open, onOpenChange, parentId, onSuccess }: AddC
                                         placeholder="Minimum 6 characters"
                                         value={newChildData.password}
                                         onChange={(e) => setNewChildData({ ...newChildData, password: e.target.value })}
-                                        className="rounded-xl border-2 focus:border-primary/50 pr-10"
+                                        className="rounded-xl border border-[#233148] bg-[#080f22] text-slate-100 placeholder:text-slate-500 h-11 pr-10 focus-visible:border-[#3bc2f3]"
                                     />
                                     <button
                                         type="button"
                                         onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
                                     >
                                         {showPassword ? (
                                             <EyeOff className="h-4 w-4" />
@@ -185,19 +186,18 @@ export function AddChildDialog({ open, onOpenChange, parentId, onSuccess }: AddC
                                 </div>
                             </div>
 
-                            <div className="flex gap-3 pt-4">
+                            <div className="flex gap-3 pt-3">
                                 <Button
                                     variant="outline"
                                     onClick={handleClose}
-                                    className="flex-1 rounded-xl font-bold border-2 h-12"
+                                    className="flex-1 rounded-xl font-semibold border border-[#233148] bg-[#080f22] text-slate-200 hover:bg-[#15273f] hover:border-[#3bc2f3] hover:text-white h-11"
                                 >
                                     Cancel
                                 </Button>
                                 <Button
-                                    variant="hero"
                                     onClick={handleCreateChild}
                                     disabled={isAddingChild || !newChildData.fullName || !newChildData.classYear || !newChildData.username || !newChildData.password.trim()}
-                                    className="flex-1 rounded-xl font-black h-12 shadow-lg shadow-primary/20"
+                                    className="flex-1 rounded-xl font-bold h-11 bg-[#3bc2f3] text-slate-950 hover:bg-[#32ade0] shadow-md shadow-cyan-500/10"
                                 >
                                     {isAddingChild ? "Creating..." : "Create Account"}
                                 </Button>

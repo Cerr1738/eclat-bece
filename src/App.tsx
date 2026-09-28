@@ -15,8 +15,8 @@ import AuthPage from "./pages/AuthPage";
 import ParentLoginInPage from "./pages/auth/ParentLoginInPage";
 import ParentSignUpPage from "./pages/auth/ParentSignUpPage";
 import SchoolLogInPage from "./pages/auth/SchoolLogInPage";
+import SchoolSignUpPage from "./pages/auth/SchoolSignUpPage";
 import StudentLogInPage from "./pages/auth/StudentLogInPage";
-import StudentSignUpPage from "./pages/auth/StudentSignUpPage";
 import AuthCallback from "./pages/AuthCallback";
 import PasswordResetPage from "./pages/PasswordResetPage";
 import EmailVerificationPage from "./pages/EmailVerificationPage";
@@ -38,6 +38,17 @@ import ParentSettingsPage from "./pages/parent/ParentSettingsPage";
 import ParentResourcesPage from "./pages/parent/ParentResourcesPage";
 import ActivityFeedPage from "./pages/parent/ActivityFeedPage";
 import SchoolDashboard from "./pages/SchoolDashboard";
+import {
+  SchoolOverviewPage,
+  SchoolStudentsPage,
+  SchoolTeachersPage,
+  SchoolClassesPage,
+  SchoolAssignmentsPage,
+  SchoolReportsPage,
+  SchoolExamsPage,
+  SchoolLeaderboardPage,
+  SchoolSettingsPage,
+} from "./pages/school/SchoolDashboardPages";
 import QuizPage from "./pages/QuizPage";
 import SubjectAnalytics from "./pages/SubjectAnalytics";
 import { StudentLayout } from "./components/StudentLayout";
@@ -97,7 +108,7 @@ const App = () => (
               <Route path="/parent-login" element={<ParentLoginInPage />} />
               <Route path="/parent-signup" element={<ParentSignUpPage />} />
               <Route path="/student-login" element={<StudentLogInPage />} />
-              <Route path="/student-signup" element={<StudentSignUpPage />} />
+              <Route path="/school-signup" element={<SchoolSignUpPage />} />
               <Route path="/school-login" element={<SchoolLogInPage />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/password-reset" element={<PasswordResetPage />} />
@@ -220,7 +231,47 @@ const App = () => (
               } />
               <Route path="/dashboard/school" element={
                 <ProtectedRoute requiredRole="school">
-                  <SchoolDashboard />
+                  <SchoolOverviewPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/dashboard/school/students" element={
+                <ProtectedRoute requiredRole="school">
+                  <SchoolStudentsPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/dashboard/school/teachers" element={
+                <ProtectedRoute requiredRole="school">
+                  <SchoolTeachersPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/dashboard/school/classes" element={
+                <ProtectedRoute requiredRole="school">
+                  <SchoolClassesPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/dashboard/school/assignments" element={
+                <ProtectedRoute requiredRole="school">
+                  <SchoolAssignmentsPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/dashboard/school/reports" element={
+                <ProtectedRoute requiredRole="school">
+                  <SchoolReportsPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/dashboard/school/exams" element={
+                <ProtectedRoute requiredRole="school">
+                  <SchoolExamsPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/dashboard/school/leaderboard" element={
+                <ProtectedRoute requiredRole="school">
+                  <SchoolLeaderboardPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/dashboard/school/settings" element={
+                <ProtectedRoute requiredRole="school">
+                  <SchoolSettingsPage />
                 </ProtectedRoute>
               } />
               <Route path="/quiz" element={

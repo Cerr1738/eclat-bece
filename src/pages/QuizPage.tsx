@@ -8,6 +8,7 @@ import { CheckCircle2, XCircle, Trophy, ArrowLeft, ArrowRight, Loader2, Flag } f
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   Dialog,
   DialogContent,
@@ -421,7 +422,10 @@ export default function QuizPage() {
     const isPassed = percentage >= 50;
 
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
+        <div className="absolute right-4 top-4">
+          <ThemeToggle />
+        </div>
         <Card className="w-full max-w-2xl p-8 text-center animate-scale-in">
           <div className="mb-6">
             <Trophy className={`w-20 h-20 mx-auto mb-4 ${isPassed ? 'text-primary' : 'text-muted-foreground'}`} />
@@ -472,13 +476,15 @@ export default function QuizPage() {
     <div className="min-h-screen bg-background p-4 pt-20">
       <div className="max-w-3xl mx-auto">
         <div className="mb-6">
-          <Button
-            variant="ghost"
-            onClick={() => navigate("/dashboard/student")}
-            className="mb-4"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
-          </Button>
+          <div className="flex items-center justify-between mb-4">
+            <Button
+              variant="ghost"
+              onClick={() => navigate("/dashboard/student")}
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+            </Button>
+            <ThemeToggle />
+          </div>
 
           <div className="flex justify-between items-center mb-2">
             <div className="flex items-center gap-2">

@@ -26,11 +26,16 @@ import {
   XCircle,
   Mail,
   Lock,
+  Sun,
+  Moon,
+  Laptop,
+  Palette,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdminPermissions } from "@/hooks/useAdminPermissions";
+import { useTheme } from "next-themes";
 
 interface SystemSetting {
   key: string;
@@ -41,6 +46,7 @@ interface SystemSetting {
 export default function AdminSettingsPage() {
   const { user } = useAuth();
   const { admin, isSuperAdmin, refetch: refetchAdmin } = useAdminPermissions();
+  const { theme, setTheme } = useTheme();
 
   // Profile Form State
   const [fullName, setFullName] = useState("");
@@ -506,6 +512,53 @@ export default function AdminSettingsPage() {
                   </Button>
                 </div>
               </form>
+            </CardContent>
+          </Card>
+
+          {/* Appearance & Theme Card */}
+          <Card className="rounded-3xl border-2 shadow-sm overflow-hidden">
+            <CardHeader className="bg-muted/30 pb-4 border-b">
+              <CardTitle className="text-xl font-bold flex items-center gap-2">
+                <Palette className="h-5 w-5 text-primary" />
+                Appearance & Theme
+              </CardTitle>
+              <CardDescription className="text-xs sm:text-sm mt-0.5">
+                Customize how the administrator console looks on your device.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="space-y-3">
+                <Label className="text-xs font-bold">Theme Preference</Label>
+                <div className="grid grid-cols-3 gap-3 max-w-md">
+                  <Button
+                    type="button"
+                    variant={theme === "light" ? "default" : "outline"}
+                    className="flex flex-col items-center justify-center gap-1.5 h-20 rounded-2xl"
+                    onClick={() => setTheme("light")}
+                  >
+                    <Sun className="h-5 w-5 text-amber-500" />
+                    <span className="text-xs font-semibold">Light</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={theme === "dark" ? "default" : "outline"}
+                    className="flex flex-col items-center justify-center gap-1.5 h-20 rounded-2xl"
+                    onClick={() => setTheme("dark")}
+                  >
+                    <Moon className="h-5 w-5 text-primary" />
+                    <span className="text-xs font-semibold">Dark</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={theme === "system" ? "default" : "outline"}
+                    className="flex flex-col items-center justify-center gap-1.5 h-20 rounded-2xl"
+                    onClick={() => setTheme("system")}
+                  >
+                    <Laptop className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-xs font-semibold">System</span>
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

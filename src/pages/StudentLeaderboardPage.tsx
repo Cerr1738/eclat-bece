@@ -65,7 +65,7 @@ export default function StudentLeaderboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-5 py-8 text-slate-100 sm:px-8">
+    <div className="w-full px-5 py-8 text-slate-100 sm:px-8">
       <div className="mb-8 animate-fade-in">
         <h2 className="flex items-center gap-2 text-2xl font-bold tracking-tight sm:text-3xl">
           National Leaderboard<span className="text-[#71c9ed]">.</span>

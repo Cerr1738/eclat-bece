@@ -102,22 +102,27 @@ export default function ActivityFeedPage() {
   const totalPages = Math.ceil(totalCount / itemsPerPage) || 1;
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl animate-fade-in pb-16">
+    <div className="w-full px-4 py-8 animate-fade-in pb-16 text-slate-100">
       {/* Header */}
       <div className="mb-8 flex items-center gap-4">
         <Button
           variant="outline"
           size="icon"
           onClick={() => navigate("/dashboard/parent")}
-          className="rounded-full border-2"
+          className="rounded-full border border-[#233148] bg-[#0c1628] text-slate-200 hover:bg-[#15273f] hover:border-[#3bc2f3] hover:text-white"
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h2 className="text-3xl font-black text-foreground tracking-tight">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border border-[#2d4b68] bg-[#0c2438] text-[#58c4e8] mb-2">
+            <Award className="h-3.5 w-3.5" />
+            <span>Activity Logs</span>
+          </div>
+          <h2 className="text-3xl font-black text-[#71c9ed] tracking-tight flex items-center gap-2">
             Activity Feed History
+            <span className="w-2 h-2 rounded-full bg-[#3bc2f3]" />
           </h2>
-          <p className="text-muted-foreground font-medium text-sm mt-1">
+          <p className="text-slate-400 font-medium text-sm mt-1">
             Complete historical timeline of quiz activities across all linked children.
           </p>
         </div>
@@ -125,47 +130,47 @@ export default function ActivityFeedPage() {
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-4">
-          <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="text-muted-foreground font-medium animate-pulse">Loading activities...</p>
+          <Loader2 className="h-10 w-10 animate-spin text-[#3bc2f3]" />
+          <p className="text-slate-400 font-medium animate-pulse">Loading activities...</p>
         </div>
       ) : activities.length === 0 ? (
-        <Card className="border-2 border-dashed">
+        <Card className="border-2 border-dashed border-[#26344d] bg-[#0c1628] text-slate-100 rounded-2xl">
           <CardContent className="py-16 text-center flex flex-col items-center justify-center">
-            <div className="bg-muted w-16 h-16 rounded-full flex items-center justify-center mb-4">
-              <Brain className="h-8 w-8 text-muted-foreground opacity-50" />
+            <div className="bg-[#0c2438] w-16 h-16 rounded-full flex items-center justify-center mb-4 text-[#58c4e8]">
+              <Brain className="h-8 w-8" />
             </div>
-            <p className="font-black text-lg text-foreground">No activities found</p>
-            <p className="text-muted-foreground text-sm max-w-xs mx-auto mt-1">
+            <p className="font-bold text-lg text-white">No activities found</p>
+            <p className="text-slate-400 text-sm max-w-xs mx-auto mt-1">
               Once your children complete their practice quizzes, their milestones will be logged here.
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-8">
-          <div className="space-y-6 relative before:absolute before:inset-y-0 before:left-4 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-primary/20 before:via-border before:to-transparent">
+          <div className="space-y-6 relative before:absolute before:inset-y-0 before:left-4 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-[#3bc2f3]/40 before:via-[#202b43] before:to-transparent">
             {activities.map((activity) => (
               <div key={activity.id} className="relative flex items-start gap-4 group">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full border-2 border-background bg-primary-light text-primary shadow-sm shrink-0 z-10 transition-transform duration-300 group-hover:scale-110 mt-1">
-                  {activity.score >= 80 ? <Award className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
+                <div className="flex items-center justify-center w-8 h-8 rounded-full border border-[#233148] bg-[#0c2438] text-[#58c4e8] shadow-sm shrink-0 z-10 transition-transform duration-300 group-hover:scale-110 mt-1">
+                  {activity.score >= 80 ? <Award className="h-4 w-4 text-[#48d7b7]" /> : <BookOpen className="h-4 w-4 text-[#58c4e8]" />}
                 </div>
 
-                <div className="flex-1 p-5 rounded-2xl border bg-card/50 backdrop-blur-sm shadow-sm hover:shadow-md transition-all duration-300 min-w-0 hover:border-primary/20">
+                <div className="flex-1 p-5 rounded-2xl border border-[#233148] bg-[#0c1628] shadow-sm hover:shadow-md transition-all duration-300 min-w-0 hover:border-[#3bc2f3]/40">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-black text-foreground text-base truncate">
+                      <span className="font-bold text-white text-base truncate">
                         {activity.student_name}
                       </span>
-                      <Badge variant={activity.score >= 80 ? "default" : "secondary"} className="shrink-0 font-black text-xs">
+                      <Badge className={`shrink-0 font-bold text-xs border ${activity.score >= 80 ? 'bg-[#102f2b] text-[#48d7b7] border-[#1d4f47]' : 'bg-[#18263e] text-slate-300 border-[#2a3c5a]'}`}>
                         {Math.round(activity.score)}%
                       </Badge>
                     </div>
-                    <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                    <span className="text-xs font-medium text-slate-400 whitespace-nowrap">
                       {formatDistanceToNow(new Date(activity.completed_at), { addSuffix: true })}
                     </span>
                   </div>
-                  <div className="text-sm text-muted-foreground leading-relaxed">
-                    Completed a <strong className="text-foreground font-bold">{activity.subject}</strong> quiz
-                    {" "}(<span className="font-mono text-primary font-bold">{activity.correct_answers}/{activity.total_questions}</span> correct)
+                  <div className="text-sm text-slate-300 leading-relaxed">
+                    Completed a <strong className="text-white font-bold">{activity.subject}</strong> quiz
+                    {" "}(<span className="font-mono text-[#3bc2f3] font-bold">{activity.correct_answers}/{activity.total_questions}</span> correct)
                   </div>
                 </div>
               </div>
@@ -174,24 +179,24 @@ export default function ActivityFeedPage() {
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-6 border-t border-border/50">
+            <div className="flex items-center justify-between pt-6 border-t border-[#202b43]">
               <Button
                 variant="outline"
                 onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                 disabled={currentPage === 1}
-                className="rounded-xl font-bold gap-1 border-2"
+                className="rounded-xl font-bold gap-1 border border-[#233148] bg-[#0c1628] text-slate-200 hover:bg-[#15273f] hover:border-[#3bc2f3] hover:text-white"
               >
                 <ChevronLeft className="h-4 w-4" />
                 Previous
               </Button>
-              <span className="text-sm font-semibold text-muted-foreground">
+              <span className="text-sm font-semibold text-slate-400">
                 Page {currentPage} of {totalPages}
               </span>
               <Button
                 variant="outline"
                 onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
                 disabled={currentPage === totalPages}
-                className="rounded-xl font-bold gap-1 border-2"
+                className="rounded-xl font-bold gap-1 border border-[#233148] bg-[#0c1628] text-slate-200 hover:bg-[#15273f] hover:border-[#3bc2f3] hover:text-white"
               >
                 Next
                 <ChevronRight className="h-4 w-4" />

@@ -122,62 +122,102 @@
     font-family: 'Outfit', sans-serif !important;
   }
 
-  [data-student-theme="light"] {
+  [data-student-theme="light"],
+  [data-parent-theme="light"],
+  [data-school-theme="light"] {
     background: #f4f7fa;
     color: #132338;
   }
 
   [data-student-theme="light"] aside,
   [data-student-theme="light"] header,
-  [data-student-theme="light"] main {
+  [data-student-theme="light"] main,
+  [data-parent-theme="light"] aside,
+  [data-parent-theme="light"] header,
+  [data-parent-theme="light"] main,
+  [data-school-theme="light"] aside,
+  [data-school-theme="light"] header,
+  [data-school-theme="light"] main {
     background-color: #ffffff !important;
   }
 
   [data-student-theme="light"] main [class*="border-"],
   [data-student-theme="light"] aside [class*="border-"],
-  [data-student-theme="light"] header [class*="border-"] {
+  [data-student-theme="light"] header [class*="border-"],
+  [data-parent-theme="light"] main [class*="border-"],
+  [data-parent-theme="light"] aside [class*="border-"],
+  [data-parent-theme="light"] header [class*="border-"],
+  [data-school-theme="light"] main [class*="border-"],
+  [data-school-theme="light"] aside [class*="border-"],
+  [data-school-theme="light"] header [class*="border-"] {
     border-color: #d2e0e8 !important;
   }
 
-  [data-student-theme="light"] main [class*="bg-"] {
+  [data-student-theme="light"] main [class*="bg-"],
+  [data-parent-theme="light"] main [class*="bg-"],
+  [data-school-theme="light"] main [class*="bg-"] {
     background-color: #f8fbfd !important;
   }
 
   [data-student-theme="light"] main [class*="text-slate-100"],
-  [data-student-theme="light"] main [class*="text-white"] {
+  [data-student-theme="light"] main [class*="text-white"],
+  [data-parent-theme="light"] main [class*="text-slate-100"],
+  [data-parent-theme="light"] main [class*="text-white"],
+  [data-school-theme="light"] main [class*="text-slate-100"],
+  [data-school-theme="light"] main [class*="text-white"] {
     color: #132338 !important;
   }
 
   [data-student-theme="light"] main [class*="text-slate-200"],
-  [data-student-theme="light"] main [class*="text-slate-300"] {
+  [data-student-theme="light"] main [class*="text-slate-300"],
+  [data-parent-theme="light"] main [class*="text-slate-200"],
+  [data-parent-theme="light"] main [class*="text-slate-300"],
+  [data-school-theme="light"] main [class*="text-slate-200"],
+  [data-school-theme="light"] main [class*="text-slate-300"] {
     color: #33485b !important;
   }
 
   [data-student-theme="light"] main [class*="text-slate-400"],
-  [data-student-theme="light"] main [class*="text-slate-500"] {
+  [data-student-theme="light"] main [class*="text-slate-500"],
+  [data-parent-theme="light"] main [class*="text-slate-400"],
+  [data-parent-theme="light"] main [class*="text-slate-500"],
+  [data-school-theme="light"] main [class*="text-slate-400"],
+  [data-school-theme="light"] main [class*="text-slate-500"] {
     color: #607487 !important;
   }
 
-  [data-student-theme="light"] main [class*="placeholder:text-slate-500"]::placeholder {
+  [data-student-theme="light"] main [class*="placeholder:text-slate-500"]::placeholder,
+  [data-parent-theme="light"] main [class*="placeholder:text-slate-500"]::placeholder,
+  [data-school-theme="light"] main [class*="placeholder:text-slate-500"]::placeholder {
     color: #607487 !important;
+  }
+
+  [data-parent-theme="light"] .parent-panel {
+    background: #ffffff !important;
+    border: 1px solid #d2e0e8 !important;
+    color: #132338 !important;
+    box-shadow: 0 2px 10px -2px rgba(0, 0, 0, 0.05);
   }
 
   .parent-shell {
-    background: radial-gradient(circle at top, rgba(94, 172, 245, 0.14), transparent 38%), hsl(var(--background));
+    background: #080f22;
+    color: #f1f5f9;
   }
 
   .parent-panel {
-    background: linear-gradient(180deg, rgba(17, 28, 41, 0.88) 0%, rgba(15, 28, 42, 0.96) 100%);
-    border: 1px solid hsl(var(--border));
-    box-shadow: var(--shadow-soft);
+    background: #0c1628;
+    border: 1px solid #233148;
+    color: #f1f5f9;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
   }
 
   .dark .parent-panel {
-    background: linear-gradient(180deg, rgba(17, 28, 41, 0.9), rgba(12, 22, 34, 0.98));
+    background: #0c1628;
+    border: 1px solid #233148;
   }
 
   .parent-page-shell {
-    @apply max-w-7xl mx-auto px-4 pb-20 pt-8 md:px-6;
+    @apply max-w-7xl mx-auto px-4 pb-20 pt-6 md:px-6;
   }
 
   .parent-page-header {
@@ -185,27 +225,27 @@
   }
 
   .parent-section-chip {
-    @apply inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-primary;
+    @apply inline-flex items-center gap-2 rounded-full border border-[#2d4b68] bg-[#0c2438] px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-[#58c4e8];
   }
 
   .parent-title {
-    @apply text-3xl font-black tracking-tight text-foreground md:text-4xl;
+    @apply text-3xl font-black tracking-tight text-[#f2f3f8] md:text-4xl;
   }
 
   .parent-subtitle {
-    @apply text-sm font-medium text-muted-foreground md:text-base;
+    @apply text-sm font-medium text-slate-400 md:text-base;
   }
 
   .parent-mini-stat {
-    @apply rounded-[1.75rem] border border-border/60 bg-card/70 p-4 shadow-sm backdrop-blur-sm;
+    @apply rounded-[1.5rem] border border-[#233148] bg-[#0c1628] p-4 text-slate-100 shadow-sm;
   }
 
   .parent-glow-button {
-    @apply inline-flex items-center justify-center rounded-xl border border-primary/30 bg-primary/10 px-4 py-2 font-bold text-primary transition hover:bg-primary hover:text-primary-foreground;
+    @apply inline-flex items-center justify-center rounded-xl bg-[#3bc2f3] px-4 py-2 font-bold text-[#041c2d] transition hover:bg-[#6cd8ff];
   }
 
   .parent-search {
-    @apply h-12 w-full rounded-2xl border border-border/60 bg-background/70 pl-11 pr-4 text-sm font-medium shadow-sm outline-none transition focus:border-primary/60 focus:ring-2 focus:ring-primary/20;
+    @apply h-12 w-full rounded-2xl border border-[#26344d] bg-[#0d162a] pl-11 pr-4 text-sm font-medium text-slate-200 placeholder:text-slate-400 shadow-sm outline-none transition focus:border-[#3bc2f3]/60 focus:ring-2 focus:ring-[#3bc2f3]/20;
   }
 }
 
