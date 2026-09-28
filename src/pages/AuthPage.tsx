@@ -27,7 +27,6 @@ const signupSchema = z
 
 export default function AuthPage({ roleOverride }: { roleOverride?: AuthRole }) {
   const navigate = useNavigate();
-  useRedirectIfAuthenticated();
   const [searchParams] = useSearchParams();
   const role = (roleOverride ?? (searchParams.get("role") || "parent")) as AuthRole;
   const [isLoading, setIsLoading] = useState(false);
@@ -45,6 +44,8 @@ export default function AuthPage({ roleOverride }: { roleOverride?: AuthRole }) 
         return "Student";
     }
   };
+
+
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,7 +67,6 @@ export default function AuthPage({ roleOverride }: { roleOverride?: AuthRole }) 
           description: "School name must be at least 2 characters",
           variant: "destructive",
         });
-        setIsLoading(false);
         return;
       }
 
@@ -117,18 +117,14 @@ export default function AuthPage({ roleOverride }: { roleOverride?: AuthRole }) 
 
       if (emailError) {
         console.error("Error sending verification email:", emailError);
-        toast({
-          title: "Verification Email Notice",
-          description: "Your account was created, but we had trouble dispatching the verification email. You can request a new code on the next screen.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Account Created!",
-          description: "Please check your email to verify your account.",
-        });
       }
 
+      toast({
+        title: "Account Created!",
+        description: "Please check your email to verify your account.",
+      });
+
+      // Navigate to email verification page with user_id for later onboarding redirect
       navigate(`/verify-email?email=${encodeURIComponent(validated.email)}&role=${role}&user_id=${data.user.id}`);
     } catch (error: unknown) {
       if (error instanceof z.ZodError) {
@@ -162,12 +158,12 @@ export default function AuthPage({ roleOverride }: { roleOverride?: AuthRole }) 
       }
 
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
+        provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?role=${role}`,
+          redirectTo: `${window.location.origin}/auth/callback`,
           queryParams: {
-            access_type: "offline",
-            prompt: "select_account",
+            access_type: 'offline',
+            prompt: 'consent',
           },
         },
       });
@@ -189,6 +185,8 @@ export default function AuthPage({ roleOverride }: { roleOverride?: AuthRole }) 
       setIsLoading(false);
     }
   };
+
+
 
   return (
     <main className="relative flex min-h-screen items-center justify-center bg-slate-100 px-4 py-8 font-sans text-slate-900 dark:bg-[#081328] dark:text-[#dce7ff]">

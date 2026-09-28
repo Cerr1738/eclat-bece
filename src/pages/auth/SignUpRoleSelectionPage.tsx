@@ -10,44 +10,42 @@ import { useRedirectIfAuthenticated } from "@/hooks/useRedirectIfAuthenticated";
 export default function SignUpRoleSelectionPage({ login = false }: { login?: boolean }) {
   const navigate = useNavigate();
   useRedirectIfAuthenticated();
-  const { theme } = useTheme();
-  const logo = theme === "dark" ? logoLight : logoDark;
 
   const roles = login
     ? [
-        {
-          id: "student",
-          icon: GraduationCap,
-          title: "Student",
-          description: "Log in to your account and continue your learning journey.",
-        },
-        {
-          id: "parent",
-          icon: Users,
-          title: "Parent",
-          description: "Monitor academic performance, manage child accounts, and review progress.",
-        },
-        {
-          id: "school",
-          icon: Building2,
-          title: "School",
-          description: "Access school tools to manage students, classes, and analytics.",
-        },
-      ]
+      {
+        id: "student",
+        icon: GraduationCap,
+        title: "Student",
+        description: "Log in to your account and continue your learning journey.",
+      },
+      {
+        id: "parent",
+        icon: Users,
+        title: "Parent",
+        description: "Monitor academic performance, manage child accounts, and review progress.",
+      },
+      {
+        id: "school",
+        icon: Building2,
+        title: "School",
+        description: "Access school tools to manage students, classes, and analytics.",
+      },
+    ]
     : [
-        {
-          id: "parent",
-          icon: Users,
-          title: "Parent",
-          description: "Create a parent profile and manage your child’s account, performance, and assignments.",
-        },
-        {
-          id: "school",
-          icon: Building2,
-          title: "School",
-          description: "Create a school profile and manage student onboarding, classes, and performance reporting.",
-        },
-      ];
+      {
+        id: "parent",
+        icon: Users,
+        title: "Parent",
+        description: "Create a parent profile and manage your child’s account, performance, and assignments.",
+      },
+      {
+        id: "school",
+        icon: Building2,
+        title: "School",
+        description: "Create a school profile and manage student onboarding, classes, and performance reporting.",
+      },
+    ];
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#081328] p-0 font-sans text-[#dce7ff] relative">
