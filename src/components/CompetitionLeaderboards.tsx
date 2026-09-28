@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { Trophy, Calendar, Crown, Clock, Medal, Flame, Calculator, BookOpen, ChevronLeft, ChevronRight, Sparkles, School, Building2, Award, Gift } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -126,10 +126,13 @@ export const CompetitionLeaderboards = ({
   const renderLeaderboard = (
     leaders: LeaderboardStudent[],
     icon: ReactNode,
-    prizeInfo: string,
-    currentRank: number,
-    currentPoints: number,
-    currentPage: number,
+    tagTitle: string,
+    prizeOrSubtitle: string,
+    timerLabel: string,
+    timerValue: string,
+    currentRank: number = 0,
+    currentPoints: number = 0,
+    currentPage: number = 1,
     onPageChange: (page: number) => void
   ) => {
     const displayList = limit ? leaders.slice(0, limit) : leaders;
@@ -178,45 +181,158 @@ export const CompetitionLeaderboards = ({
           </div>
         </div>
 
-        {leaders.length === 0 ? <div className="border border-dashed border-[#2b3a54] bg-[#0e192b] py-12 text-center text-sm text-slate-400">No students ranked yet. Be the first to quiz!</div> : <>
-          <div className="grid min-h-[230px] grid-cols-3 items-end gap-2 rounded-lg border border-[#2b3a54] bg-[#0e192b] px-3 pb-5 pt-8 sm:gap-6 sm:px-12">
-            {[2, 1, 3].map((rank) => {
-              const student = podium.find((item) => item.rank === rank);
-              if (!student) return <div key={rank} />;
-              const winner = rank === 1;
-              const isSecond = rank === 2;
-              return (
+        {leaders.length === 0 ? (
+          <div className="border border-dashed border-[#2b3a54] bg-[#0e192b] py-12 text-center text-sm text-slate-400">
+            No students ranked yet. Be the first to quiz!
+          </div>
+        ) : (
+          <>
+            {/* Top 3 Podium */}
+            {safeCurrentPage === 1 && podium.length > 0 && (
+              <div className="grid min-h-[230px] grid-cols-3 items-end gap-2 rounded-lg border border-[#2b3a54] bg-[#0e192b] px-3 pb-5 pt-8 sm:gap-6 sm:px-12">
+                {[2, 1, 3].map((rank) => {
+                  const student = podium.find((item) => item.rank === rank);
+                  if (!student) return <div key={rank} />;
+                  const winner = rank === 1;
+                  const isSecond = rank === 2;
+                  return (
+                    <div
+                      key={student.rank}
+                      className={`relative flex flex-col items-center justify-end rounded-t-lg border px-2 pb-3.5 pt-5 transition-all ${winner
+                        ? 'h-48 sm:h-52 border-[#f4d21f] bg-[#202b40] shadow-lg shadow-amber-500/10'
+                        : isSecond
+                          ? 'h-40 sm:h-44 border-[#43506a] bg-[#182338]'
+                          : 'h-[136px] sm:h-[150px] border-[#43506a] bg-[#182338]'
+                        }`}
+                    >
+                      <span className={`absolute -top-3.5 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold shadow-sm ${winner ? 'bg-[#f4d21f] text-[#071023] ring-2 ring-[#f4d21f]/30' : 'border border-slate-300 bg-[#273349] text-white'
+                        }`}>
+                        {rank}
+                      </span>
+                      <span className="mb-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#091426] text-xl shadow-inner">
+                        {student.avatar}
+                      </span>
+                      <p className="w-full truncate px-1 text-center text-xs font-semibold text-white leading-normal" title={student.name}>
+                        {student.name}{student.isCurrentUser ? ' (You)' : ''}
+                      </p>
+                      <p className={`mt-0.5 text-[11px] font-bold leading-tight ${winner ? 'text-[#f4d21f]' : 'text-slate-400'}`}>
+                        {student.points.toLocaleString()} pts
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Students Table */}
+            <div className="overflow-hidden rounded-lg border border-[#1d2a40] bg-[#0e192b]">
+              <div className="grid grid-cols-[52px_1fr_1fr_72px] border-b border-[#2b3a54] px-4 py-3 text-[9px] uppercase tracking-wider text-slate-500 sm:grid-cols-[60px_1fr_1fr_90px]">
+                <span>Rank</span>
+                <span>Student</span>
+                <span>School</span>
+                <span className="text-right">Points</span>
+              </div>
+              {tableLeaders.map((student) => (
                 <div
-                  key={student.rank}
-                  className={`relative flex flex-col items-center justify-end rounded-t-lg border px-2 pb-3.5 pt-5 transition-all ${winner
-                    ? 'h-48 sm:h-52 border-[#f4d21f] bg-[#202b40] shadow-lg shadow-amber-500/10'
-                    : isSecond
-                      ? 'h-40 sm:h-44 border-[#43506a] bg-[#182338]'
-                      : 'h-[136px] sm:h-[150px] border-[#43506a] bg-[#182338]'
-                    }`}
+                  key={`${student.rank}-${student.name}`}
+                  className={`grid grid-cols-[52px_1fr_1fr_72px] items-center border-b border-[#17243a] px-4 py-3 text-xs transition hover:bg-[#13223a] sm:grid-cols-[60px_1fr_1fr_90px] ${student.isCurrentUser ? 'bg-[#1a2d4b] border-[#36527e]' : ''}`}
                 >
-                  <span className={`absolute -top-3.5 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold shadow-sm ${winner ? 'bg-[#f4d21f] text-[#071023] ring-2 ring-[#f4d21f]/30' : 'border border-slate-300 bg-[#273349] text-white'
-                    }`}>
-                    {rank}
+                  <span className="text-slate-400">{student.rank}</span>
+                  <span className="flex min-w-0 items-center gap-2 font-medium text-slate-100">
+                    <span className="text-base">{student.avatar}</span>
+                    <span className="truncate">{student.name}</span>
                   </span>
-                  <span className="mb-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#091426] text-xl shadow-inner">
-                    {student.avatar}
-                  </span>
-                  <p className="w-full truncate px-1 text-center text-xs font-semibold text-white leading-normal" title={student.name}>
-                    {student.name}{student.isCurrentUser ? ' (You)' : ''}
-                  </p>
-                  <p className={`mt-0.5 text-[11px] font-bold leading-tight ${winner ? 'text-[#f4d21f]' : 'text-slate-400'}`}>
-                    {student.points.toLocaleString()} pts
-                  </p>
+                  <span className="truncate text-slate-400">{student.school}</span>
+                  <strong className="text-right text-slate-100">{student.points.toLocaleString()}</strong>
                 </div>
-              );
-            })}
+              ))}
+            </div>
+
+            {/* User Position Card */}
+            {showUserPositionCard && userRow && (
+              <div className="rounded-lg border border-amber-400/30 bg-[#162744] p-3 text-xs text-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-bold text-amber-300">#{userRow.rank}</span>
+                  <span className="font-semibold">{userRow.name}</span>
+                  <span className="text-slate-400">• {userRow.school}</span>
+                </div>
+                <strong className="text-amber-300">{userRow.points.toLocaleString()} pts</strong>
+              </div>
+            )}
+
+            {/* Pagination Controls */}
+            {isPaginated && (
+              <div className="flex items-center justify-between border-t border-[#2b3a54]/60 pt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={safeCurrentPage <= 1}
+                  onClick={() => onPageChange(Math.max(1, safeCurrentPage - 1))}
+                  className="h-8 gap-1 border-[#2b3a54] bg-[#111d32] text-xs text-slate-300 hover:bg-[#192b47]"
+                >
+                  <ChevronLeft size={14} /> Previous
+                </Button>
+                <span className="text-xs text-slate-400">
+                  Page {safeCurrentPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={safeCurrentPage >= totalPages}
+                  onClick={() => onPageChange(Math.min(totalPages, safeCurrentPage + 1))}
+                  className="h-8 gap-1 border-[#2b3a54] bg-[#111d32] text-xs text-slate-300 hover:bg-[#192b47]"
+                >
+                  Next <ChevronRight size={14} />
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderSchoolLeaderboard = (
+    schools: SchoolLeaderboardItem[],
+    currentPage: number = 1,
+    onPageChange: (page: number) => void
+  ) => {
+    const displaySchools = limit ? schools.slice(0, limit) : schools;
+    const isPaginated = !limit && schools.length > ITEMS_PER_PAGE;
+
+    const totalPages = Math.max(1, Math.ceil(schools.length / ITEMS_PER_PAGE));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const startIndex = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    const paginatedSchools = isPaginated ? schools.slice(startIndex, endIndex) : displaySchools;
+
+    const podium = schools.filter((s) => s.rank <= 3).sort((a, b) => a.rank - b.rank);
+
+    return (
+      <div className="space-y-5 animate-fade-in">
+        {/* Banner with competition metadata & timer */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3 rounded-lg border border-[#2b3a54] bg-[#111d32] px-4 py-3">
+            <span className="rounded-md bg-[#183149] p-2 text-amber-400">
+              <Building2 size={20} />
+            </span>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400 font-bold">Inter-School League</p>
+              <p className="text-sm font-semibold text-slate-100">Top Junior Secondary Schools by Aggregate Scholar EP</p>
+            </div>
           </div>
-          <div className="overflow-hidden rounded-lg border border-[#1d2a40] bg-[#0e192b]">
-            <div className="grid grid-cols-[52px_1fr_1fr_72px] border-b border-[#2b3a54] px-4 py-3 text-[9px] uppercase tracking-wider text-slate-500 sm:grid-cols-[60px_1fr_1fr_90px]"><span>Rank</span><span>Student</span><span>School</span><span className="text-right">Points</span></div>
-            {tableLeaders.map((student) => <div key={`${student.rank}-${student.name}`} className="grid grid-cols-[52px_1fr_1fr_72px] items-center border-b border-[#17243a] px-4 py-3 text-xs transition hover:bg-[#13223a] sm:grid-cols-[60px_1fr_1fr_90px]"><span className="text-slate-400">{student.rank}</span><span className="flex min-w-0 items-center gap-2 font-medium text-slate-100"><span className="text-base">{student.avatar}</span><span className="truncate">{student.name}</span></span><span className="truncate text-slate-400">{student.school}</span><strong className="text-right text-slate-100">{student.points.toLocaleString()}</strong></div>)}
+          <div className="flex items-center gap-2 rounded-lg border border-[#2b3a54] bg-[#111d32] px-4 py-3 text-xs text-slate-300">
+            <Trophy size={15} className="text-amber-400" />
+            <span>Active Season</span>
+            <strong className="text-white font-mono">2026 Academic Year</strong>
           </div>
-          ) : (
+        </div>
+
+        {schools.length === 0 ? (
+          <div className="border border-dashed border-[#2b3a54] bg-[#0e192b] py-12 text-center text-sm text-slate-400">
+            No schools ranked yet. Join a school to compete!
+          </div>
+        ) : (
           <>
             {/* Top 3 Schools Podium */}
             {safeCurrentPage === 1 && podium.length > 0 && (
@@ -315,12 +431,12 @@ export const CompetitionLeaderboards = ({
             )}
           </>
         )}
-        </div>
-        );
+      </div>
+    );
   };
 
-        return (
-        <Card className="overflow-hidden rounded-xl border border-[#2b3a54] bg-transparent shadow-none">
+  return (
+    <Card className="overflow-hidden rounded-xl border border-[#2b3a54] bg-transparent shadow-none">
           <CardContent className="pt-6">
             {/* Sponsored Challenge Foundation Banner (PRD §11.3 Feature 5) */}
             <div className="mb-6 p-4 rounded-2xl border-2 border-amber-500/40 bg-gradient-to-r from-amber-500/10 via-[#111d32] to-primary/10 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
