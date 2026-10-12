@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -389,27 +389,68 @@ export default function QuizPage() {
           classYear = (assignment.student as { class_year?: string } | null)?.class_year || "";
         }
 
-        // If duel challenge, fetch duel details and question IDs
+        // If duel challenge, fetch duel details and verify participation & attempt lock
         let duelQuestionIds: string[] = [];
         if (duelId) {
-          const { data: duelData } = await supabase
+          const { data: studentRecord } = await supabase
+            .from("students")
+            .select("id, class_year")
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          if (!studentRecord) {
+            toast.error("Student record not found");
+            navigate("/dashboard/student");
+            return;
+          }
+          classYear = studentRecord.class_year;
+
+          const { data: duelData, error: duelErr } = await supabase
             .from("arena_challenges")
-            .select("subject, topic, max_time_seconds, question_ids")
+            .select("id, subject, topic, max_time_seconds, question_ids, status, challenger_id, opponent_id, challenger_score, opponent_score")
             .eq("id", duelId)
             .maybeSingle();
 
-          if (duelData) {
-            fetchSubject = duelData.subject;
-            setQuizSubject(`Duel: ${duelData.subject}`);
-            if (duelData.max_time_seconds) {
-              const mins = Math.max(1, Math.round(duelData.max_time_seconds / 60));
-              setAssignmentDuration(mins);
-              setTimeLeft(duelData.max_time_seconds);
-            }
-            if (Array.isArray(duelData.question_ids) && duelData.question_ids.length > 0) {
-              duelQuestionIds = duelData.question_ids;
-              fetchLimit = duelData.question_ids.length;
-            }
+          if (duelErr || !duelData) {
+            toast.error("Duel challenge not found");
+            navigate("/dashboard/student/duel-of-minds");
+            return;
+          }
+
+          const isChallenger = studentRecord.id === duelData.challenger_id;
+          const isOpponent = studentRecord.id === duelData.opponent_id;
+
+          if (!isChallenger && !isOpponent) {
+            toast.error("You are not a participant in this duel");
+            navigate("/dashboard/student/duel-of-minds");
+            return;
+          }
+
+          const myScore = isChallenger ? duelData.challenger_score : duelData.opponent_score;
+
+          // Single attempt lock: if already finished or if this student already took their turn
+          if (duelData.status === "completed" || myScore !== null) {
+            toast.info("You have already completed your turn for this duel.");
+            navigate("/dashboard/student/duel-of-minds");
+            return;
+          }
+
+          if (duelData.status === "expired" || duelData.status === "declined") {
+            toast.error("This duel challenge is no longer active");
+            navigate("/dashboard/student/duel-of-minds");
+            return;
+          }
+
+          fetchSubject = duelData.subject;
+          setQuizSubject(`Duel: ${duelData.subject}`);
+          if (duelData.max_time_seconds) {
+            const mins = Math.max(1, Math.round(duelData.max_time_seconds / 60));
+            setAssignmentDuration(mins);
+            setTimeLeft(duelData.max_time_seconds);
+          }
+          if (Array.isArray(duelData.question_ids) && duelData.question_ids.length > 0) {
+            duelQuestionIds = duelData.question_ids;
+            fetchLimit = duelData.question_ids.length;
           }
         }
 
@@ -499,11 +540,16 @@ export default function QuizPage() {
           return;
         }
 
-        // Randomly shuffle and select questions based on limit
-        const shuffled = [...allQuestionIds].sort(() => Math.random() - 0.5);
-        const selectedIds = shuffled
-          .slice(0, Math.min(fetchLimit, shuffled.length))
-          .map((q: any) => q.id);
+        // Randomly shuffle and select questions based on limit (duels use server-assigned questions)
+        let selectedIds: string[];
+        if (duelQuestionIds.length > 0) {
+          selectedIds = duelQuestionIds;
+        } else {
+          const shuffled = [...allQuestionIds].sort(() => Math.random() - 0.5);
+          selectedIds = shuffled
+            .slice(0, Math.min(fetchLimit, shuffled.length))
+            .map((q: any) => q.id);
+        }
 
         // Open a server-authoritative session. This also enforces the
         // daily-challenge lock server-side.
@@ -858,8 +904,8 @@ export default function QuizPage() {
   };
 
   const handleRetrySameQuestions = async () => {
-    if (isDailyChallenge) {
-      toast.error("Daily Challenge can only be completed once per day.");
+    if (isDailyChallenge || isDuel) {
+      toast.error(isDuel ? "Arena duels cannot be retaken." : "Daily Challenge can only be completed once per day.");
       return;
     }
     // Retry replays the same questions in a NEW server session so scoring
@@ -892,8 +938,8 @@ export default function QuizPage() {
   };
 
   const handlePracticeNewQuestions = () => {
-    if (isDailyChallenge) {
-      toast.error("Daily Challenge can only be completed once per day.");
+    if (isDailyChallenge || isDuel) {
+      toast.error(isDuel ? "Arena duels cannot be retaken." : "Daily Challenge can only be completed once per day.");
       return;
     }
     // The old session is orphaned by the cache clear — mark it abandoned.
@@ -1266,6 +1312,30 @@ export default function QuizPage() {
                 </Button>
               </div>
 
+              <Button
+                onClick={handleBackToDashboard}
+                variant="ghost"
+                className="w-full font-semibold h-11"
+                size="lg"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Dashboard
+              </Button>
+            </div>
+          ) : isDuel ? (
+            <div className="space-y-3">
+              <Button
+                onClick={() => {
+                  clearSessionCache();
+                  navigate("/dashboard/student/duel-of-minds");
+                }}
+                variant="default"
+                className="w-full gap-2 font-bold text-base h-12 shadow-md bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white"
+                size="lg"
+              >
+                <Swords className="w-5 h-5" />
+                Return to Duel of Minds
+              </Button>
               <Button
                 onClick={handleBackToDashboard}
                 variant="ghost"
