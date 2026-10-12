@@ -39,4 +39,10 @@ export const queryKeys = {
 
   /** Teacher dashboard dataset (own registry row, classes, roster, assignments). */
   teacher: (userId?: string | null) => ["teacher-portal", userId ?? "anon"] as const,
+
+  /** Duel of Minds — all arena queries share the "arena" root for invalidation. */
+  arenaMe: (userId?: string | null) => ["arena", "me", userId ?? "anon"] as const,
+  arenaIncoming: (studentId?: string | null) => ["arena", "incoming", studentId ?? "anon"] as const,
+  arenaHistory: (studentId?: string | null) => ["arena", "history", studentId ?? "anon"] as const,
+  arenaOpponents: (query: string) => ["arena", "opponents", query] as const,
 } as const;

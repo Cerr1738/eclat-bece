@@ -1,6 +1,14 @@
 /**
  * Éclat Head-to-Head Arena (Duel of Minds) Point Economy Engine
  * Implements PRD Section 3.9, 4 (Abuse Vector 5), 5.2, and Epic ARE-01
+ *
+ * PARITY CONTRACT: the server resolves duels in SQL
+ * (supabase/migrations/20261012090100_quick_duel_and_matchmaking.sql,
+ * submit_duel_turn), which mirrors this file's constants and rules — base
+ * 50/20/5, upset = tier gap >= 2 (the engine's extra 50+-rank branch cannot
+ * be evaluated at SQL resolve time), streak bonuses at 3/5/10, loss resets,
+ * draw preserves, and the 2-matches-per-pair-per-day cap. Keep the two in
+ * sync when touching either side.
  */
 
 import {
