@@ -88,7 +88,6 @@ const TeacherStudentsPage = lazy(() => import("./pages/teacher/TeacherStudentsPa
 const TeacherAssignmentsPage = lazy(() => import("./pages/teacher/TeacherAssignmentsPage"));
 
 const AboutPage = lazy(() => import("./pages/AboutPage"));
-const PricingPage = lazy(() => import("./pages/PricingPage"));
 const FeaturesPage = lazy(() => import("./pages/FeaturesPage"));
 const PublicLeaderboardPage = lazy(() => import("./pages/PublicLeaderboardPage"));
 const CertificateVerificationPage = lazy(() => import("./pages/CertificateVerificationPage"));
@@ -115,7 +114,7 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/about" element={<AboutPage />} />
-                <Route path="/pricing" element={<PricingPage />} />
+                <Route path="/pricing" element={<Navigate to="/" replace />} />
                 <Route path="/features" element={<FeaturesPage />} />
                 <Route path="/leaderboard" element={<PublicLeaderboardPage />} />
                 <Route path="/verify-certificate" element={<CertificateVerificationPage />} />

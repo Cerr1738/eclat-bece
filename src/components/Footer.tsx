@@ -42,12 +42,6 @@ export const Footer = () => {
                 </Link>
               </li>
               <li>
-                <Link to="/pricing" className="hover:text-[#3bc2f3] transition-colors flex items-center gap-1 group">
-                  <span>Pricing</span>
-                  <ArrowUpRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#3bc2f3]" />
-                </Link>
-              </li>
-              <li>
                 <Link to="/leaderboard" className="hover:text-[#3bc2f3] transition-colors flex items-center gap-1 group">
                   <span>National Standings</span>
                   <ArrowUpRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#3bc2f3]" />
