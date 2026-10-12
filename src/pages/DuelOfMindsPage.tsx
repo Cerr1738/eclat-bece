@@ -394,8 +394,18 @@ export default function DuelOfMindsPage() {
                           )}
                         </div>
                         <div>
-                          <div className="font-semibold flex items-center gap-2">
-                            <span>vs {opponentName}</span>
+                          <div className="font-semibold flex items-center gap-2 flex-wrap">
+                            <span>
+                              <span className={isChallenger ? "font-bold text-foreground" : "text-muted-foreground"}>
+                                {battle.challengerName}
+                                {isChallenger && <span className="text-[11px] text-primary ml-1 font-semibold">(You)</span>}
+                              </span>
+                              <span className="text-muted-foreground mx-1.5 font-normal text-xs">vs</span>
+                              <span className={!isChallenger ? "font-bold text-foreground" : "text-muted-foreground"}>
+                                {battle.opponentName}
+                                {!isChallenger && <span className="text-[11px] text-primary ml-1 font-semibold">(You)</span>}
+                              </span>
+                            </span>
                             <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground">
                               {battle.subject}
                             </Badge>
