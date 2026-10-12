@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "13.0.5"
   }
   graphql_public: {
     Tables: {
@@ -1425,6 +1425,7 @@ export type Database = {
         Row: {
           current_league_tier: number
           current_level: number
+          duel_win_streak: number
           last_daily_challenge_date: string | null
           last_qualifying_date: string | null
           lifetime_ep: number
@@ -1440,6 +1441,7 @@ export type Database = {
         Insert: {
           current_league_tier?: number
           current_level?: number
+          duel_win_streak?: number
           last_daily_challenge_date?: string | null
           last_qualifying_date?: string | null
           lifetime_ep?: number
@@ -1455,6 +1457,7 @@ export type Database = {
         Update: {
           current_league_tier?: number
           current_level?: number
+          duel_win_streak?: number
           last_daily_challenge_date?: string | null
           last_qualifying_date?: string | null
           lifetime_ep?: number
@@ -1874,11 +1877,12 @@ export type Database = {
         Args: {
           p_challenge_name: string
           p_challenger_id: string
-          p_max_time_seconds: number
+          p_max_time_seconds?: number
           p_opponent_id: string
-          p_question_ids: string[]
+          p_question_count?: number
+          p_question_ids?: string[]
           p_subject: string
-          p_topic: string
+          p_topic?: string
         }
         Returns: string
       }
@@ -1887,6 +1891,7 @@ export type Database = {
         Returns: Json
       }
       expire_old_invitations: { Args: never; Returns: number }
+      expire_stale_arena_challenges: { Args: never; Returns: number }
       finalize_admin_creation: {
         Args: { _invitation_id: string; _user_id: string }
         Returns: Json
@@ -2025,6 +2030,10 @@ export type Database = {
         }[]
       }
       reconcile_student_points_ledger: { Args: never; Returns: Json }
+      rematch_arena_challenge: {
+        Args: { p_challenge_id: string }
+        Returns: string
+      }
       rename_subject_cascade: {
         Args: { p_new_name: string; p_subject_id: string }
         Returns: Json
@@ -2039,6 +2048,10 @@ export type Database = {
         }
         Returns: Json
       }
+      respond_arena_challenge: {
+        Args: { p_accept: boolean; p_challenge_id: string }
+        Returns: Json
+      }
       search_duel_opponents: {
         Args: { p_limit?: number; p_query?: string }
         Returns: {
@@ -2051,6 +2064,15 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      start_instant_duel: {
+        Args: {
+          p_max_time_seconds?: number
+          p_question_count?: number
+          p_subject: string
+          p_topic?: string
+        }
+        Returns: Json
+      }
       start_quiz_session: {
         Args: {
           p_arena_challenge_id?: string
@@ -2062,19 +2084,10 @@ export type Database = {
         }
         Returns: Json
       }
-      submit_duel_turn:
-        | {
-            Args: {
-              p_challenge_id: string
-              p_score: number
-              p_time_taken_seconds: number
-            }
-            Returns: Json
-          }
-        | {
-            Args: { p_challenge_id: string; p_session_id: string }
-            Returns: Json
-          }
+      submit_duel_turn: {
+        Args: { p_challenge_id: string; p_session_id: string }
+        Returns: Json
+      }
       submit_quiz_answer: {
         Args: {
           p_question_id: string
