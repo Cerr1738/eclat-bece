@@ -48,7 +48,7 @@ import { PointBreakdownLedger } from "@/components/gamification/PointBreakdownLe
 import { BadgeUnlockModal } from "@/components/gamification/BadgeUnlockModal";
 import { submitDuelTurn } from "@/services/gamification/arenaService";
 import { GamificationSessionOutcome } from "@/services/gamification/gamificationService";
-import { DifficultyLevel } from "@/services/gamification/types";
+import { DifficultyLevel, ArenaMatchResult } from "@/services/gamification/types";
 import { BadgeDefinition } from "@/services/gamification/badgeEngine";
 import { getDailyChallengeCountdown } from "@/services/gamification/dailyChallengeEngine";
 
@@ -87,7 +87,7 @@ export default function QuizPage() {
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
-  const [duelOutcome, setDuelOutcome] = useState<{ isMatchComplete: boolean; matchResult?: any } | null>(null);
+  const [duelOutcome, setDuelOutcome] = useState<{ isMatchComplete: boolean; matchResult?: ArenaMatchResult } | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -1107,13 +1107,13 @@ export default function QuizPage() {
 
           {/* Head-to-Head Arena Result Banner */}
           {duelOutcome && (
-            <div className="mb-6 p-5 rounded-xl border border-purple-500/40 bg-gradient-to-r from-purple-500/20 via-[#18112c] to-[#0e192b] text-left">
+            <div className="mb-6 p-5 rounded-xl border border-purple-500/40 bg-gradient-to-r from-purple-500/15 via-purple-500/5 to-transparent text-left">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center border border-purple-500/40">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-500 flex items-center justify-center border border-purple-500/40">
                   <Swords className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">
+                  <h3 className="text-base font-black">
                     {duelOutcome.isMatchComplete && duelOutcome.matchResult
                       ? duelOutcome.matchResult.outcome === "win"
                         ? "Arena Victory! 🏆"
@@ -1122,16 +1122,38 @@ export default function QuizPage() {
                         : "Arena Battle Concluded 🛡️"
                       : "Duel Round Recorded! ⚡"}
                   </h3>
-                  <p className="text-xs text-slate-300">
+                  <p className="text-xs text-muted-foreground">
                     {duelOutcome.isMatchComplete && duelOutcome.matchResult
-                      ? duelOutcome.matchResult.isUpset
+                      ? duelOutcome.matchResult.cappedByCollusion
+                        ? "Daily duel limit with this opponent reached — the match counts, but today's rematches award no EP."
+                        : duelOutcome.matchResult.isUpset
                         ? `Upset Victory! You took down a higher-ranked opponent and claimed +${duelOutcome.matchResult.totalEP} EP!`
                         : `Battle completed! You earned +${duelOutcome.matchResult.totalEP} EP in the Head-to-Head Arena.`
                       : "Your score and completion time are locked in. Awaiting your opponent's round in the Arena Hub."}
                   </p>
+                  {duelOutcome.matchResult && duelOutcome.matchResult.streakBonusEP > 0 && (
+                    <p className="text-xs font-bold text-amber-500 mt-0.5">
+                      🔥 {duelOutcome.matchResult.newWinStreak} duels in a row — keep it burning!
+                    </p>
+                  )}
                 </div>
               </div>
-              <div className="pt-2">
+              {duelOutcome.isMatchComplete &&
+                duelOutcome.matchResult &&
+                duelOutcome.matchResult.breakdown.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {duelOutcome.matchResult.breakdown.map((item, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between text-xs bg-background/50 rounded-lg px-3 py-1.5 border border-border/40"
+                      >
+                        <span className="font-medium">{item.label}</span>
+                        <span className="font-black text-amber-500">+{item.amount} EP</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              <div className="pt-3">
                 <Button
                   size="sm"
                   onClick={() => navigate("/dashboard/student/duel-of-minds")}

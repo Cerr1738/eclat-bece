@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type {
   GamificationSessionOutcome,
 } from "@/services/gamification/gamificationService";
+import type { PointBreakdownItem } from "@/services/gamification/types";
 
 export type QuizSessionMode = "practice" | "daily_challenge" | "duel";
 
@@ -105,7 +106,7 @@ export async function completeQuizSession(
 export async function submitDuelTurnServer(
   challengeId: string,
   sessionId: string
-): Promise<{ status: string; resolved: boolean; outcome?: string; winner_id?: string | null; ep_awarded?: number }> {
+): Promise<DuelTurnResult> {
   // Server-authoritative: score and duration are derived from the completed
   // session's recorded answers — only the ids travel from the client.
   const { data, error } = await supabase.rpc("submit_duel_turn", {
@@ -115,13 +116,19 @@ export async function submitDuelTurnServer(
   if (error) {
     throw error;
   }
-  return data as unknown as {
-    status: string;
-    resolved: boolean;
-    outcome?: string;
-    winner_id?: string | null;
-    ep_awarded?: number;
-  };
+  return data as unknown as DuelTurnResult;
+}
+
+export interface DuelTurnResult {
+  status: string;
+  resolved: boolean;
+  outcome?: string;
+  ep_awarded?: number;
+  upset_bonus?: number;
+  streak_bonus?: number;
+  new_win_streak?: number;
+  capped?: boolean;
+  breakdown?: PointBreakdownItem[];
 }
 
 export async function abandonQuizSessionServer(sessionId: string): Promise<void> {
