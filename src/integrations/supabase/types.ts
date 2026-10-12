@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "13.0.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       admin_audit_log: {
@@ -1947,6 +1922,35 @@ export type Database = {
       }
       get_public_leaderboard: { Args: never; Returns: Json }
       get_required_ep_for_level: { Args: { p_level: number }; Returns: number }
+      get_student_duel_challenges: {
+        Args: { p_limit?: number }
+        Returns: {
+          challenge_name: string
+          challenger_ep: number
+          challenger_id: string
+          challenger_name: string
+          challenger_school: string
+          challenger_score: number
+          challenger_time_taken: number
+          challenger_username: string
+          completed_at: string
+          created_at: string
+          id: string
+          max_time_seconds: number
+          opponent_ep: number
+          opponent_id: string
+          opponent_name: string
+          opponent_school: string
+          opponent_score: number
+          opponent_time_taken: number
+          opponent_username: string
+          question_ids: string[]
+          status: string
+          subject: string
+          topic: string
+          winner_id: string
+        }[]
+      }
       get_student_league_cohort: {
         Args: { p_student_id: string }
         Returns: Json
@@ -2002,6 +2006,35 @@ export type Database = {
           _resource_type?: string
         }
         Returns: string
+      }
+      get_student_duel_challenges: {
+        Args: { p_limit?: number }
+        Returns: {
+          challenge_name: string
+          challenger_ep: number | null
+          challenger_id: string
+          challenger_name: string
+          challenger_school: string | null
+          challenger_score: number | null
+          challenger_time_taken: number | null
+          challenger_username: string | null
+          completed_at: string | null
+          created_at: string
+          id: string
+          max_time_seconds: number
+          opponent_ep: number | null
+          opponent_id: string
+          opponent_name: string
+          opponent_school: string | null
+          opponent_score: number | null
+          opponent_time_taken: number | null
+          opponent_username: string | null
+          question_ids: string[]
+          status: string
+          subject: string
+          topic: string | null
+          winner_id: string | null
+        }[]
       }
       lookup_parent_by_code: {
         Args: { p_code: string }
@@ -2246,9 +2279,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       app_role: ["student", "parent", "school", "admin", "teacher"],
@@ -2256,3 +2286,4 @@ export const Constants = {
     },
   },
 } as const
+

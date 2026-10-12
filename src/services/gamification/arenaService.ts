@@ -116,108 +116,65 @@ export async function searchOpponents(query: string, limit = 30): Promise<DuelOp
  * Fetches pending challenges where the current student is the opponent.
  */
 export async function fetchIncomingChallenges(studentId: string): Promise<ArenaChallenge[]> {
-  const { data, error } = await supabase
-    .from("arena_challenges")
-    .select(`
-      id,
-      challenger_id,
-      opponent_id,
-      challenge_name,
-      subject,
-      topic,
-      question_ids,
-      max_time_seconds,
-      status,
-      created_at,
-      challenger:students!arena_challenges_challenger_id_fkey(
-        id,
-        profile:profiles(full_name, username),
-        school:schools(school_name)
-      )
-    `)
-    .eq("opponent_id", studentId)
-    .eq("status", "pending")
-    .order("created_at", { ascending: false });
+  const { data, error } = await supabase.rpc("get_student_duel_challenges", {
+    p_limit: 50,
+  });
 
   if (error) throw error;
 
-  return (data ?? []).map((row: any) => ({
-    id: row.id,
-    challengerId: row.challenger_id,
-    opponentId: row.opponent_id,
-    challengerName: row.challenger?.profile?.full_name || row.challenger?.profile?.username || "Fellow Scholar",
-    opponentName: "You",
-    challengerSchool: row.challenger?.school?.school_name,
-    subject: row.subject,
-    topic: row.topic,
-    numberOfQuestions: (row.question_ids || []).length,
-    maxTimeSeconds: row.max_time_seconds,
-    status: row.status,
-    createdAt: row.created_at,
-  }));
+  return (data ?? [])
+    .filter((row) => row.opponent_id === studentId && row.status === "pending")
+    .map((row) => ({
+      id: row.id,
+      challengerId: row.challenger_id,
+      opponentId: row.opponent_id,
+      challengerName: row.challenger_name || row.challenger_username || "Fellow Scholar",
+      opponentName: "You",
+      challengerSchool: row.challenger_school ?? undefined,
+      subject: row.subject,
+      topic: row.topic ?? undefined,
+      numberOfQuestions: (row.question_ids || []).length,
+      maxTimeSeconds: row.max_time_seconds,
+      status: row.status as ArenaChallenge["status"],
+      createdAt: row.created_at,
+    }));
 }
 
 /**
  * Fetches active or completed challenges for a student.
  */
 export async function fetchStudentDuelHistory(studentId: string): Promise<ArenaChallenge[]> {
-  const { data, error } = await supabase
-    .from("arena_challenges")
-    .select(`
-      id,
-      challenger_id,
-      opponent_id,
-      challenge_name,
-      subject,
-      topic,
-      question_ids,
-      max_time_seconds,
-      status,
-      challenger_score,
-      challenger_time_taken,
-      opponent_score,
-      opponent_time_taken,
-      challenger_ep,
-      opponent_ep,
-      winner_id,
-      created_at,
-      completed_at,
-      challenger:students!arena_challenges_challenger_id_fkey(
-        id,
-        profile:profiles(full_name, username)
-      ),
-      opponent:students!arena_challenges_opponent_id_fkey(
-        id,
-        profile:profiles(full_name, username)
-      )
-    `)
-    .or(`challenger_id.eq.${studentId},opponent_id.eq.${studentId}`)
-    .order("created_at", { ascending: false })
-    .limit(20);
+  const { data, error } = await supabase.rpc("get_student_duel_challenges", {
+    p_limit: 30,
+  });
 
   if (error) throw error;
 
-  return (data ?? []).map((row: any) => ({
-    id: row.id,
-    challengerId: row.challenger_id,
-    opponentId: row.opponent_id,
-    challengerName: row.challenger?.profile?.full_name || row.challenger?.profile?.username || "Challenger",
-    opponentName: row.opponent?.profile?.full_name || row.opponent?.profile?.username || "Opponent",
-    subject: row.subject,
-    topic: row.topic,
-    numberOfQuestions: (row.question_ids || []).length,
-    maxTimeSeconds: row.max_time_seconds,
-    status: row.status,
-    challengerScore: row.challenger_score,
-    challengerTimeSeconds: row.challenger_time_taken,
-    opponentScore: row.opponent_score,
-    opponentTimeSeconds: row.opponent_time_taken,
-    challengerEP: row.challenger_ep,
-    opponentEP: row.opponent_ep,
-    winnerId: row.winner_id,
-    createdAt: row.created_at,
-    completedAt: row.completed_at,
-  }));
+  return (data ?? [])
+    .filter((row) => row.challenger_id === studentId || row.opponent_id === studentId)
+    .map((row) => ({
+      id: row.id,
+      challengerId: row.challenger_id,
+      opponentId: row.opponent_id,
+      challengerName: row.challenger_name || row.challenger_username || "Challenger",
+      opponentName: row.opponent_name || row.opponent_username || "Opponent",
+      challengerSchool: row.challenger_school ?? undefined,
+      opponentSchool: row.opponent_school ?? undefined,
+      subject: row.subject,
+      topic: row.topic ?? undefined,
+      numberOfQuestions: (row.question_ids || []).length,
+      maxTimeSeconds: row.max_time_seconds,
+      status: row.status as ArenaChallenge["status"],
+      challengerScore: row.challenger_score ?? undefined,
+      challengerTimeSeconds: row.challenger_time_taken ?? undefined,
+      opponentScore: row.opponent_score ?? undefined,
+      opponentTimeSeconds: row.opponent_time_taken ?? undefined,
+      challengerEP: row.challenger_ep ?? undefined,
+      opponentEP: row.opponent_ep ?? undefined,
+      winnerId: row.winner_id,
+      createdAt: row.created_at,
+      completedAt: row.completed_at ?? undefined,
+    }));
 }
 
 /**
