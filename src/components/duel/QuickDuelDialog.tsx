@@ -133,7 +133,7 @@ export function QuickDuelDialog({
       if (instant) {
         const created = await startInstantDuel({
           subject,
-          topic: topics.length > 0 ? topics.join(", ") : null,
+          topic: topics.length > 0 ? topics.join(",") : null,
           questionCount,
           maxTimeSeconds,
         });
@@ -144,7 +144,7 @@ export function QuickDuelDialog({
           challengerId: challengerId!,
           opponentId: opponent!.id,
           subject,
-          topic: topics.length > 0 ? topics.join(", ") : null,
+          topic: topics.length > 0 ? topics.join(",") : null,
           questionCount,
           maxTimeSeconds,
           challengeName: `${challengerName || "You"} vs ${opponent!.name} — ${subject}`,

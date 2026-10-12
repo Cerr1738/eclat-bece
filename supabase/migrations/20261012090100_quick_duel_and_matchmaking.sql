@@ -44,7 +44,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_challenge_id uuid;
-  v_challenger_class_year text;
+  v_challenger_class_year public.class_year;
   v_picked uuid[];
   v_missing integer;
   v_challenger_name text;
@@ -88,13 +88,16 @@ BEGIN
       SELECT q.id
       FROM (
         SELECT id, subject, topic FROM public.quiz_questions_year9
-        WHERE v_challenger_class_year = 'year_9'
+        WHERE v_challenger_class_year = 'year_9'::public.class_year
         UNION ALL
         SELECT id, subject, topic FROM public.quiz_questions_year6
-        WHERE v_challenger_class_year <> 'year_9'
+        WHERE v_challenger_class_year <> 'year_9'::public.class_year
       ) q
       WHERE q.subject = p_subject
-        AND (p_topic IS NULL OR q.topic = ANY(string_to_array(p_topic, ',')))
+        AND (
+          NULLIF(trim(p_topic), '') IS NULL
+          OR trim(q.topic) = ANY(SELECT trim(t) FROM unnest(string_to_array(p_topic, ',')) AS t)
+        )
       ORDER BY random()
       LIMIT LEAST(GREATEST(COALESCE(p_question_count, 10), 1), 20)
     ) pick;
@@ -105,7 +108,7 @@ BEGIN
     p_question_ids := v_picked;
   ELSE
     -- Explicit IDs must still be real, cohort-matched questions.
-    IF v_challenger_class_year = 'year_9' THEN
+    IF v_challenger_class_year = 'year_9'::public.class_year THEN
       SELECT count(*) INTO v_missing
       FROM unnest(p_question_ids) AS qid
       WHERE NOT EXISTS (SELECT 1 FROM public.quiz_questions_year9 q WHERE q.id = qid);
