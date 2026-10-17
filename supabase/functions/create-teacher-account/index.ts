@@ -52,9 +52,9 @@ serve(async (req) => {
       return json({ error: "Only schools can provision teacher accounts" }, 403);
     }
 
-    const { action, teacher_id: teacherId, email, password } = await req.json();
+    const { action, teacher_id: teacherId, email, password, new_password: newPassword } = await req.json();
     const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
-    const cleanPassword = typeof password === "string" ? password : "";
+    const cleanPassword = typeof password === "string" ? password : typeof newPassword === "string" ? newPassword : "";
     const cleanTeacherId = typeof teacherId === "string" ? teacherId.trim() : "";
 
     if (!cleanTeacherId) {
@@ -115,14 +115,16 @@ serve(async (req) => {
       return json({ error: "Password must be between 6 and 100 characters" }, 400);
     }
 
-    const { data: existingProfile, error: profileLookupErr } = await adminClient
-      .from("profiles")
-      .select("id")
-      .eq("email", loginEmail)
-      .maybeSingle();
-    if (profileLookupErr) throw profileLookupErr;
-    if (existingProfile) {
-      return json({ error: "An account with this email already exists" }, 409);
+    const { data: availability, error: availErr } = await adminClient.rpc(
+      "check_teacher_email_availability",
+      {
+        check_email: loginEmail,
+        exclude_teacher_id: teacherRow.id,
+      }
+    );
+    if (availErr) throw availErr;
+    if (availability && !availability.available) {
+      return json({ error: availability.message || "This email is not available for a teacher account" }, 409);
     }
 
     const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
@@ -176,7 +178,7 @@ serve(async (req) => {
 
     const { error: linkError } = await adminClient
       .from("school_teachers")
-      .update({ user_id: newUserId })
+      .update({ user_id: newUserId, email: loginEmail })
       .eq("id", teacherRow.id);
     if (linkError) {
       await rollbackUser();
