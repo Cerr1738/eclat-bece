@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SchoolTeacherItem } from "@/hooks/useSchoolData";
 import { supabase } from "@/integrations/supabase/client";
+import { getEdgeFunctionError } from "@/lib/errorUtils";
 import { toast } from "sonner";
 
 interface SchoolEditTeacherDialogProps {
@@ -41,8 +42,10 @@ export function SchoolEditTeacherDialog({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isProvisioning, setIsProvisioning] = useState(false);
   const [newPassword, setNewPassword] = useState("");
-
-  const teacherUserId = (teacher as { user_id?: string | null } | null)?.user_id ?? null;
+  const [localUserId, setLocalUserId] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailChecking, setEmailChecking] = useState(false);
+  const [emailAvailable, setEmailAvailable] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (teacher) {
@@ -50,12 +53,49 @@ export function SchoolEditTeacherDialog({
       setEmail(teacher.email || "");
       setPhone(teacher.phone || "");
       setStatus(teacher.status || "Active");
+      setLocalUserId((teacher as { user_id?: string | null } | null)?.user_id ?? null);
+      setEmailError(null);
+      setEmailChecking(false);
+      setEmailAvailable(null);
     }
   }, [teacher]);
 
   if (!teacher) return null;
 
+  const teacherUserId = localUserId ?? (teacher as { user_id?: string | null } | null)?.user_id ?? null;
   const isVirtual = teacher.id.startsWith("virtual-");
+
+  const checkEmailAvailability = async (emailVal: string) => {
+    const trimmed = emailVal.trim().toLowerCase();
+    if (!trimmed || !trimmed.includes("@")) {
+      setEmailError(null);
+      setEmailAvailable(null);
+      return;
+    }
+
+    setEmailChecking(true);
+    try {
+      const { data, error } = await supabase.rpc("check_teacher_email_availability", {
+        check_email: trimmed,
+        exclude_teacher_id: isVirtual ? undefined : teacher.id,
+      });
+      if (error) throw error;
+      if (data && typeof data === "object") {
+        const res = data as { available: boolean; message?: string };
+        if (!res.available) {
+          setEmailError(res.message || "This email is not available");
+          setEmailAvailable(false);
+        } else {
+          setEmailError(null);
+          setEmailAvailable(true);
+        }
+      }
+    } catch (err) {
+      console.error("Error checking email availability:", err);
+    } finally {
+      setEmailChecking(false);
+    }
+  };
 
   const handleProvisionLogin = async () => {
     if (isVirtual) {
@@ -72,6 +112,18 @@ export function SchoolEditTeacherDialog({
       return;
     }
 
+    // Pre-flight check email availability
+    const { data: availData } = await supabase.rpc("check_teacher_email_availability", {
+      check_email: loginEmail,
+      exclude_teacher_id: teacher.id,
+    });
+    if (availData && typeof availData === "object" && !(availData as { available: boolean }).available) {
+      const msg = (availData as { message?: string }).message || "This email address is not available";
+      setEmailError(msg);
+      toast.error(msg);
+      return;
+    }
+
     setIsProvisioning(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -81,17 +133,16 @@ export function SchoolEditTeacherDialog({
           ? { Authorization: `Bearer ${session.access_token}` }
           : undefined,
         body: isReset
-          ? { action: "reset-password", teacher_id: teacher.id, new_password: newPassword }
+          ? { action: "reset-password", teacher_id: teacher.id, password: newPassword, new_password: newPassword }
           : { teacher_id: teacher.id, email: loginEmail, password: newPassword },
       });
       if (error) {
-        const message = typeof error === "object" && error !== null && "message" in error
-          ? String((error as { message?: unknown }).message)
-          : "Failed to provision teacher account";
+        const message = await getEdgeFunctionError(error, "Failed to provision teacher account");
         throw new Error(message);
       }
       toast.success(isReset ? "Teacher password updated!" : "Login account created!");
       setNewPassword("");
+      setLocalUserId("provisioned");
       onSaved?.();
     } catch (err: any) {
       console.error("Error provisioning teacher login:", err);
@@ -107,23 +158,49 @@ export function SchoolEditTeacherDialog({
       return;
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+    if (newPassword && newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+
+    if (cleanEmail) {
+      // Pre-flight check email availability
+      const { data: availData } = await supabase.rpc("check_teacher_email_availability", {
+        check_email: cleanEmail,
+        exclude_teacher_id: isVirtual ? undefined : teacher.id,
+      });
+      if (availData && typeof availData === "object" && !(availData as { available: boolean }).available) {
+        const msg = (availData as { message?: string }).message || "This email address is not available";
+        setEmailError(msg);
+        toast.error(msg);
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
-      // Never send department/primary_subject/assigned_class_ids here: the
-      // allocation model is retired and legacy values must be preserved.
       const profileUpdate = {
         full_name: fullName.trim(),
-        email: email.trim() || null,
+        email: cleanEmail || null,
         phone: phone.trim() || null,
         status,
       };
+
+      let teacherRecordId = teacher.id;
+
       if (isVirtual) {
         // Promote virtual teacher to genuine school_teachers table
-        const { error } = await supabase.from("school_teachers").insert({
-          school_id: schoolId,
-          ...profileUpdate,
-        });
+        const { data: inserted, error } = await supabase
+          .from("school_teachers")
+          .insert({
+            school_id: schoolId,
+            ...profileUpdate,
+          })
+          .select("id")
+          .single();
         if (error) throw error;
+        if (inserted?.id) teacherRecordId = inserted.id;
       } else {
         // Update existing record
         const { error } = await supabase
@@ -131,6 +208,41 @@ export function SchoolEditTeacherDialog({
           .update(profileUpdate)
           .eq("id", teacher.id);
         if (error) throw error;
+      }
+
+      // If user typed a password into the login section, provision or reset login automatically
+      if (newPassword && newPassword.length >= 6) {
+        if (!cleanEmail) {
+          toast.warning("Profile saved, but an email is required to create a teacher login.");
+          onSaved?.();
+          onOpenChange(false);
+          return;
+        }
+
+        const { data: { session } } = await supabase.auth.getSession();
+        const isReset = !!teacherUserId;
+        const { error: provError } = await supabase.functions.invoke("create-teacher-account", {
+          headers: session?.access_token
+            ? { Authorization: `Bearer ${session.access_token}` }
+            : undefined,
+          body: isReset
+            ? { action: "reset-password", teacher_id: teacherRecordId, password: newPassword, new_password: newPassword }
+            : { teacher_id: teacherRecordId, email: cleanEmail, password: newPassword },
+        });
+
+        if (provError) {
+          const message = await getEdgeFunctionError(provError, "Failed to provision login");
+          toast.warning(`Profile saved, but login could not be created: ${message}`);
+          onSaved?.();
+          return;
+        }
+
+        toast.success(isReset ? "Teacher profile & password updated!" : "Teacher profile saved and login created!");
+        setNewPassword("");
+        setLocalUserId("provisioned");
+        onSaved?.();
+        onOpenChange(false);
+        return;
       }
 
       toast.success("Teacher profile updated successfully!");
@@ -221,10 +333,26 @@ export function SchoolEditTeacherDialog({
                 id="edit-email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setEmailError(null);
+                  setEmailAvailable(null);
+                }}
+                onBlur={() => checkEmailAvailability(email)}
                 placeholder="teacher@school.edu"
-                className="border-[#34415b] bg-background text-white text-xs h-9"
+                className={`border-[#34415b] bg-background text-white text-xs h-9 ${
+                  emailError ? "border-destructive focus-visible:ring-destructive" : ""
+                }`}
               />
+              {emailChecking && (
+                <p className="text-[10px] text-muted-foreground animate-pulse">Checking email availability...</p>
+              )}
+              {emailError && (
+                <p className="text-[10px] text-destructive font-medium leading-tight">{emailError}</p>
+              )}
+              {emailAvailable && !emailError && (
+                <p className="text-[10px] text-emerald-400 font-medium">✓ Email is available</p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -292,7 +420,7 @@ export function SchoolEditTeacherDialog({
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={isProvisioning || newPassword.length < 6}
+                  disabled={isProvisioning || newPassword.length < 6 || !!emailError || emailChecking}
                   onClick={handleProvisionLogin}
                   className="text-xs"
                 >
@@ -326,8 +454,8 @@ export function SchoolEditTeacherDialog({
             </Button>
             <Button
               onClick={handleUpdate}
-              disabled={isSaving}
-              className="bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff] font-bold text-xs"
+              disabled={isSaving || !!emailError || emailChecking}
+              className="bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff] font-bold text-xs disabled:opacity-50"
             >
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Changes

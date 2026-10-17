@@ -9,6 +9,7 @@ import { SchoolEditTeacherDialog } from "@/components/school/SchoolEditTeacherDi
 import { useSchoolData, SchoolTeacherItem } from "@/hooks/useSchoolData";
 import { SchoolConfirmDialog } from "@/components/school/SchoolConfirmDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { getEdgeFunctionError } from "@/lib/errorUtils";
 import { toast } from "sonner";
 
 const teacherLoginTone = (teacher: unknown) => {
@@ -43,7 +44,10 @@ export function SchoolTeachersPage() {
             : undefined,
           body: { action: "revoke-login", teacher_id: target.id },
         });
-        if (revokeErr) throw revokeErr;
+        if (revokeErr) {
+          const message = await getEdgeFunctionError(revokeErr, "Failed to revoke teacher login");
+          throw new Error(message);
+        }
       }
 
       const { error } = await supabase
