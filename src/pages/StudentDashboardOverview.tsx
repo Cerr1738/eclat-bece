@@ -27,6 +27,21 @@ interface StudentBadge {
   earned: boolean;
 }
 
+interface StudentGamificationProfile {
+  student_id?: string;
+  lifetime_ep?: number | null;
+  weekly_ep?: number | null;
+  monthly_ep?: number | null;
+  current_level?: number | null;
+  current_league_tier?: number | null;
+  streak_count?: number | null;
+  longest_streak?: number | null;
+  streak_shields?: number | null;
+  pinned_badge_ids?: string[] | null;
+  last_qualifying_date?: string | null;
+  last_daily_challenge_date?: string | null;
+}
+
 export default function StudentDashboardOverview() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -104,11 +119,13 @@ export default function StudentDashboardOverview() {
         setStudentId(studentData.id);
         
         // Fetch gamification profile
-        const { data: gameProfile } = await supabase
-          .from("student_gamification_profile" as any)
+        const { data: rawGameProfile } = await (supabase as any)
+          .from("student_gamification_profile")
           .select("*")
           .eq("student_id", studentData.id)
           .maybeSingle();
+
+        const gameProfile = rawGameProfile as StudentGamificationProfile | null;
 
         if (gameProfile) {
           const ep = Number(gameProfile.lifetime_ep || 0);
@@ -125,8 +142,8 @@ export default function StudentDashboardOverview() {
 
           // Fallback 1: check student_points_ledger for daily_challenge entries today
           if (!challengeDone) {
-            const { data: todayLedger } = await supabase
-              .from("student_points_ledger" as any)
+            const { data: todayLedger } = await (supabase as any)
+              .from("student_points_ledger")
               .select("id")
               .eq("student_id", studentData.id)
               .eq("source_type", "daily_challenge")
@@ -155,7 +172,8 @@ export default function StudentDashboardOverview() {
 
           if (challengeDone && gameProfile.last_daily_challenge_date !== todayUTC) {
             // Backfill so future checks are instant
-            await (supabase.from("student_gamification_profile" as any) as any)
+            await (supabase as any)
+              .from("student_gamification_profile")
               .update({ last_daily_challenge_date: todayUTC })
               .eq("student_id", studentData.id);
           }
@@ -174,8 +192,8 @@ export default function StudentDashboardOverview() {
         }
 
         // Fetch earned badges
-        const { data: badgesRes } = await supabase
-          .from("student_badges" as any)
+        const { data: badgesRes } = await (supabase as any)
+          .from("student_badges")
           .select("badge_id")
           .eq("student_id", studentData.id);
 
@@ -184,8 +202,8 @@ export default function StudentDashboardOverview() {
         }
 
         // Fetch Weak topic for Signature Focus Area Recommendation
-        const { data: weakTopics } = await supabase
-          .from("student_topic_mastery" as any)
+        const { data: weakTopics } = await (supabase as any)
+          .from("student_topic_mastery")
           .select("subject, topic, rolling_accuracy")
           .eq("student_id", studentData.id)
           .eq("status", "weak")
@@ -406,8 +424,8 @@ export default function StudentDashboardOverview() {
   const handleUpdatePinnedBadges = async (newPinnedIds: string[]) => {
     if (!studentId) return;
     setPinnedBadgeIds(newPinnedIds);
-    const { error } = await supabase
-      .from("student_gamification_profile" as any)
+    const { error } = await (supabase as any)
+      .from("student_gamification_profile")
       .update({ pinned_badge_ids: newPinnedIds, updated_at: new Date().toISOString() })
       .eq("student_id", studentId);
     if (error) {
