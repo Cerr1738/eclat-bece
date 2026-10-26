@@ -1,351 +1,211 @@
 /**
- * Head-to-Head Arena Service
- * Handles persistence, matchmaking queries, duel turn submission, and point distribution
+ * Head-to-Head Arena Service (Duel of Minds)
+ *
+ * All duel writes go through SECURITY DEFINER RPCs — direct table writes are
+ * blocked by RLS. Challenges are created with server-picked questions, so the
+ * client never touches the question bank. Fetchers throw on error so TanStack
+ * Query can surface failure states instead of silently rendering empty lists.
  */
 
 import { supabase } from "@/integrations/supabase/client";
 import {
-  ArenaMatchInput,
   ArenaMatchResult,
   ArenaChallenge,
 } from "./types";
-import { calculateArenaMatchEP } from "./arenaEngine";
-import { calculateStudentLevel } from "./levelEngine";
+import { submitDuelTurnServer } from "@/services/quizSession";
 
-export interface CreateChallengeInput {
+export interface DuelOpponent {
+  id: string;
+  name: string;
+  username: string;
+  school: string;
+  classYear: string;
+}
+
+export interface QuickDuelInput {
   challengerId: string;
   opponentId: string;
-  challengeName: string;
   subject: string;
-  topic?: string;
+  topic?: string | null;
+  questionCount: number;
   maxTimeSeconds: number;
-  questionIds: string[];
+  challengeName?: string;
 }
 
 /**
- * Creates and persists a new challenge in the database
+ * Issues a duel with server-picked questions (p_question_ids is null — the
+ * RPC randomly selects p_question_count cohort-matched questions).
  */
-export async function createDuelChallenge(input: CreateChallengeInput): Promise<string | null> {
-  try {
-    const { data, error } = await supabase.rpc("create_arena_challenge" as any, {
-      p_challenger_id: input.challengerId,
-      p_opponent_id: input.opponentId,
-      p_challenge_name: input.challengeName,
-      p_subject: input.subject,
-      p_topic: input.topic || null,
-      p_max_time_seconds: input.maxTimeSeconds,
-      p_question_ids: input.questionIds,
-    });
+export async function createQuickDuel(input: QuickDuelInput): Promise<string> {
+  const { data, error } = await supabase.rpc("create_arena_challenge", {
+    p_challenger_id: input.challengerId,
+    p_opponent_id: input.opponentId,
+    p_challenge_name: input.challengeName ?? "",
+    p_subject: input.subject,
+    p_topic: input.topic ?? null,
+    p_max_time_seconds: input.maxTimeSeconds,
+    p_question_ids: null,
+    p_question_count: input.questionCount,
+  });
+  if (error) throw error;
+  return data as string;
+}
 
-    if (error) throw error;
-    return data as string;
-  } catch (err) {
-    console.error("Failed to create duel challenge:", err);
-    throw err;
-  }
+/** One-tap matchmaking: random classmate, server-picked questions. */
+export async function startInstantDuel(input: {
+  subject: string;
+  topic?: string | null;
+  questionCount?: number;
+  maxTimeSeconds?: number;
+}): Promise<{ challengeId: string; opponentName: string }> {
+  const { data, error } = await supabase.rpc("start_instant_duel", {
+    p_subject: input.subject,
+    p_topic: input.topic ?? null,
+    p_question_count: input.questionCount ?? 10,
+    p_max_time_seconds: input.maxTimeSeconds ?? 120,
+  });
+  if (error) throw error;
+  const result = data as unknown as { challenge_id: string; opponent_name: string };
+  return { challengeId: result.challenge_id, opponentName: result.opponent_name };
+}
+
+/** Accept or decline an incoming challenge (opponent-only, server-validated). */
+export async function respondToChallenge(
+  challengeId: string,
+  accept: boolean
+): Promise<"accepted" | "declined"> {
+  const { data, error } = await supabase.rpc("respond_arena_challenge", {
+    p_challenge_id: challengeId,
+    p_accept: accept,
+  });
+  if (error) throw error;
+  const result = data as unknown as { status: "accepted" | "declined" };
+  return result.status;
+}
+
+/** Re-issues a completed duel against the same opponent with fresh questions. */
+export async function rematchChallenge(challengeId: string): Promise<string> {
+  const { data, error } = await supabase.rpc("rematch_arena_challenge", {
+    p_challenge_id: challengeId,
+  });
+  if (error) throw error;
+  return data as string;
 }
 
 /**
- * Fetches challenges where current student is the opponent and status is 'pending'
+ * Opponent discovery through the school-scoped SECURITY DEFINER RPC: same
+ * cohort as the caller, names resolved server-side.
+ */
+export async function searchOpponents(query: string, limit = 30): Promise<DuelOpponent[]> {
+  const { data, error } = await supabase.rpc("search_duel_opponents", {
+    p_query: query.trim() ? query.trim() : null,
+    p_limit: limit,
+  });
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    name: row.full_name || row.username || "Fellow Scholar",
+    username: row.username || "",
+    school: row.school_name || "",
+    classYear: row.class_year || "",
+  }));
+}
+
+/**
+ * Fetches pending challenges where the current student is the opponent.
  */
 export async function fetchIncomingChallenges(studentId: string): Promise<ArenaChallenge[]> {
-  try {
-    const { data, error } = await supabase
-      .from("arena_challenges" as any)
-      .select(`
-        id,
-        challenger_id,
-        opponent_id,
-        challenge_name,
-        subject,
-        topic,
-        question_ids,
-        max_time_seconds,
-        status,
-        challenger_score,
-        opponent_score,
-        winner_id,
-        created_at,
-        challenger:students!arena_challenges_challenger_id_fkey(name, username, school:schools(name))
-      `)
-      .eq("opponent_id", studentId)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
+  const { data, error } = await supabase.rpc("get_student_duel_challenges", {
+    p_limit: 50,
+  });
 
-    if (error) throw error;
+  if (error) throw error;
 
-    return (data || []).map((row: any) => ({
+  return (data ?? [])
+    .filter((row) => row.opponent_id === studentId && row.status === "pending")
+    .map((row) => ({
       id: row.id,
       challengerId: row.challenger_id,
       opponentId: row.opponent_id,
-      challengerName: row.challenger?.name || "Fellow Scholar",
+      challengerName: row.challenger_name || row.challenger_username || "Fellow Scholar",
       opponentName: "You",
-      challengerSchool: row.challenger?.school?.name,
+      challengerSchool: row.challenger_school ?? undefined,
       subject: row.subject,
-      topic: row.topic,
+      topic: row.topic ?? undefined,
       numberOfQuestions: (row.question_ids || []).length,
       maxTimeSeconds: row.max_time_seconds,
-      status: row.status,
+      status: row.status as ArenaChallenge["status"],
       createdAt: row.created_at,
     }));
-  } catch (err) {
-    console.error("Error fetching incoming challenges:", err);
-    return [];
-  }
 }
 
 /**
- * Fetches active or completed challenges for a student
+ * Fetches active or completed challenges for a student.
  */
 export async function fetchStudentDuelHistory(studentId: string): Promise<ArenaChallenge[]> {
-  try {
-    const { data, error } = await supabase
-      .from("arena_challenges" as any)
-      .select(`
-        id,
-        challenger_id,
-        opponent_id,
-        challenge_name,
-        subject,
-        topic,
-        question_ids,
-        max_time_seconds,
-        status,
-        challenger_score,
-        challenger_time_taken,
-        opponent_score,
-        opponent_time_taken,
-        challenger_ep,
-        opponent_ep,
-        winner_id,
-        created_at,
-        completed_at,
-        challenger:students!arena_challenges_challenger_id_fkey(name, username),
-        opponent:students!arena_challenges_opponent_id_fkey(name, username)
-      `)
-      .or(`challenger_id.eq.${studentId},opponent_id.eq.${studentId}`)
-      .order("created_at", { ascending: false })
-      .limit(20);
+  const { data, error } = await supabase.rpc("get_student_duel_challenges", {
+    p_limit: 30,
+  });
 
-    if (error) throw error;
+  if (error) throw error;
 
-    return (data || []).map((row: any) => ({
+  return (data ?? [])
+    .filter((row) => row.challenger_id === studentId || row.opponent_id === studentId)
+    .map((row) => ({
       id: row.id,
       challengerId: row.challenger_id,
       opponentId: row.opponent_id,
-      challengerName: row.challenger?.name || "Challenger",
-      opponentName: row.opponent?.name || "Opponent",
+      challengerName: row.challenger_name || row.challenger_username || "Challenger",
+      opponentName: row.opponent_name || row.opponent_username || "Opponent",
+      challengerSchool: row.challenger_school ?? undefined,
+      opponentSchool: row.opponent_school ?? undefined,
       subject: row.subject,
-      topic: row.topic,
+      topic: row.topic ?? undefined,
       numberOfQuestions: (row.question_ids || []).length,
       maxTimeSeconds: row.max_time_seconds,
-      status: row.status,
-      challengerScore: row.challenger_score,
-      challengerTimeSeconds: row.challenger_time_taken,
-      opponentScore: row.opponent_score,
-      opponentTimeSeconds: row.opponent_time_taken,
-      challengerEP: row.challenger_ep,
-      opponentEP: row.opponent_ep,
+      status: row.status as ArenaChallenge["status"],
+      challengerScore: row.challenger_score ?? undefined,
+      challengerTimeSeconds: row.challenger_time_taken ?? undefined,
+      opponentScore: row.opponent_score ?? undefined,
+      opponentTimeSeconds: row.opponent_time_taken ?? undefined,
+      challengerEP: row.challenger_ep ?? undefined,
+      opponentEP: row.opponent_ep ?? undefined,
       winnerId: row.winner_id,
       createdAt: row.created_at,
-      completedAt: row.completed_at,
+      completedAt: row.completed_at ?? undefined,
     }));
-  } catch (err) {
-    console.error("Error fetching duel history:", err);
-    return [];
-  }
 }
 
 /**
- * Accepts or declines an incoming challenge
- */
-export async function updateChallengeStatus(
-  challengeId: string,
-  newStatus: "accepted" | "declined"
-): Promise<boolean> {
-  try {
-    const { error } = await supabase
-      .from("arena_challenges" as any)
-      .update({ status: newStatus })
-      .eq("id", challengeId);
-
-    if (error) throw error;
-    return true;
-  } catch (err) {
-    console.error("Error updating challenge status:", err);
-    return false;
-  }
-}
-
-/**
- * Submits duel performance for a student and completes the match if both have played
+ * Submits duel performance for a student and completes the match if both have
+ * played. Server-authoritative: score and duration come from the recorded
+ * quiz session; the server returns the full EP breakdown.
  */
 export async function submitDuelTurn(params: {
   challengeId: string;
-  studentId: string;
-  score: number;
-  timeTakenSeconds: number;
+  sessionId: string;
 }): Promise<{ isMatchComplete: boolean; matchResult?: ArenaMatchResult }> {
-  const { challengeId, studentId, score, timeTakenSeconds } = params;
+  const { challengeId, sessionId } = params;
 
-  try {
-    // 1. Fetch challenge details
-    const { data: challenge, error: fetchErr } = await supabase
-      .from("arena_challenges" as any)
-      .select("*")
-      .eq("id", challengeId)
-      .single();
+  const result = await submitDuelTurnServer(challengeId, sessionId);
 
-    if (fetchErr || !challenge) {
-      throw new Error("Challenge not found");
-    }
-
-    const isChallenger = challenge.challenger_id === studentId;
-    const opponentId = isChallenger ? challenge.opponent_id : challenge.challenger_id;
-
-    // 2. Update this player's submission
-    const updatePayload: any = isChallenger
-      ? { challenger_score: score, challenger_time_taken: timeTakenSeconds }
-      : { opponent_score: score, opponent_time_taken: timeTakenSeconds };
-
-    const opponentAlreadySubmitted = isChallenger
-      ? challenge.opponent_score !== null && challenge.opponent_score !== undefined
-      : challenge.challenger_score !== null && challenge.challenger_score !== undefined;
-
-    // If opponent hasn't played yet, just save turn and wait
-    if (!opponentAlreadySubmitted) {
-      await supabase
-        .from("arena_challenges" as any)
-        .update(updatePayload)
-        .eq("id", challengeId);
-
-      return { isMatchComplete: false };
-    }
-
-    // Both players have now submitted: determine winner and calculate EP!
-    const cScore = isChallenger ? score : challenge.challenger_score;
-    const cTime = isChallenger ? timeTakenSeconds : challenge.challenger_time_taken;
-    const oScore = isChallenger ? challenge.opponent_score : score;
-    const oTime = isChallenger ? challenge.opponent_time_taken : timeTakenSeconds;
-
-    let winnerId: string | null = null;
-    if (cScore > oScore) {
-      winnerId = challenge.challenger_id;
-    } else if (oScore > cScore) {
-      winnerId = challenge.opponent_id;
-    } else {
-      // Scores tied -> tiebreaker is faster solving time
-      if (cTime < oTime) {
-        winnerId = challenge.challenger_id;
-      } else if (oTime < cTime) {
-        winnerId = challenge.opponent_id;
-      } else {
-        winnerId = null; // Absolute Draw
-      }
-    }
-
-    // Determine current player's outcome
-    let playerOutcome: "win" | "draw" | "loss" = "draw";
-    if (winnerId === studentId) playerOutcome = "win";
-    else if (winnerId !== null) playerOutcome = "loss";
-
-    // 3. Count matches between this pair in the last 24 hours (anti-collusion check)
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { count: pairMatchesCount } = await supabase
-      .from("arena_challenges" as any)
-      .select("*", { count: "exact", head: true })
-      .or(
-        `and(challenger_id.eq.${challenge.challenger_id},opponent_id.eq.${challenge.opponent_id}),and(challenger_id.eq.${challenge.opponent_id},opponent_id.eq.${challenge.challenger_id})`
-      )
-      .eq("status", "completed")
-      .gte("created_at", twentyFourHoursAgo);
-
-    // 4. Fetch profiles for tier & win streak info
-    const { data: pProfile } = await supabase
-      .from("student_gamification_profile" as any)
-      .select("current_league_tier, lifetime_ep, weekly_ep, monthly_ep")
-      .eq("student_id", studentId)
-      .maybeSingle();
-
-    const { data: oProfile } = await supabase
-      .from("student_gamification_profile" as any)
-      .select("current_league_tier")
-      .eq("student_id", opponentId)
-      .maybeSingle();
-
-    const playerTier = pProfile?.current_league_tier || 1;
-    const opponentTier = oProfile?.current_league_tier || 1;
-
-    // Calculate EP for this player
-    const matchResult = calculateArenaMatchEP({
-      outcome: playerOutcome,
-      playerTier,
-      opponentTier,
-      currentWinStreak: 0,
-      matchesBetweenPairToday: pairMatchesCount || 0,
-    });
-
-    // 5. Save completed challenge record
-    updatePayload.winner_id = winnerId;
-    updatePayload.status = "completed";
-    updatePayload.completed_at = new Date().toISOString();
-    if (isChallenger) {
-      updatePayload.challenger_ep = matchResult.totalEP;
-    } else {
-      updatePayload.opponent_ep = matchResult.totalEP;
-    }
-
-    await supabase
-      .from("arena_challenges" as any)
-      .update(updatePayload)
-      .eq("id", challengeId);
-
-    // 6. Record points in ledger & profile if EP > 0
-    if (matchResult.totalEP > 0) {
-      await supabase.from("student_points_ledger" as any).insert({
-        student_id: studentId,
-        amount: matchResult.totalEP,
-        source_type: "session_bonus",
-        reference_id: challengeId,
-        metadata: {
-          label: `Head-to-Head Arena (${playerOutcome.toUpperCase()})`,
-          isUpset: matchResult.isUpset,
-          streakBonus: matchResult.streakBonusEP,
-        },
-      });
-
-      const currentLifetime = Number(pProfile?.lifetime_ep || 0);
-      const newLifetime = currentLifetime + matchResult.totalEP;
-      const levelCalc = calculateStudentLevel(newLifetime);
-
-      await (supabase.from("student_gamification_profile" as any) as any).upsert(
-        {
-          student_id: studentId,
-          lifetime_ep: newLifetime,
-          current_level: levelCalc.level,
-          weekly_ep: Number(pProfile?.weekly_ep || 0) + matchResult.totalEP,
-          monthly_ep: Number(pProfile?.monthly_ep || 0) + matchResult.totalEP,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "student_id" }
-      );
-
-      // Update weekly cohort points
-      try {
-        if (typeof supabase.rpc === "function") {
-          await supabase.rpc("update_student_cohort_points" as any, {
-            p_student_id: studentId,
-            p_additional_ep: matchResult.totalEP,
-          });
-        }
-      } catch (cohortErr) {
-        console.warn("Failed to sync cohort points for arena match:", cohortErr);
-      }
-    }
-
-    return { isMatchComplete: true, matchResult };
-  } catch (err) {
-    console.error("Error submitting duel turn:", err);
-    throw err;
+  if (!result.resolved) {
+    return { isMatchComplete: false };
   }
+
+  const outcome = (result.outcome ?? "draw") as ArenaMatchResult["outcome"];
+  const breakdown = result.breakdown ?? [];
+  const matchResult: ArenaMatchResult = {
+    outcome,
+    baseEP: breakdown.find((b) => b.category === "base")?.amount ?? 0,
+    upsetBonusEP: result.upset_bonus ?? 0,
+    streakBonusEP: result.streak_bonus ?? 0,
+    totalEP: result.ep_awarded ?? 0,
+    newWinStreak: result.new_win_streak ?? 0,
+    isUpset: (result.upset_bonus ?? 0) > 0,
+    cappedByCollusion: result.capped ?? false,
+    breakdown,
+  };
+  return { isMatchComplete: true, matchResult };
 }

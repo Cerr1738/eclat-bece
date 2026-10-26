@@ -116,6 +116,14 @@ export function NotificationItem({ notification, onMarkAsRead, onAction }: Notif
     } else if (notification.type === "assignment_completed") {
       navigate("/dashboard/parent");
       onAction();
+    } else if (
+      notification.type === "duel_challenge" ||
+      notification.type === "duel_accepted" ||
+      notification.type === "duel_declined" ||
+      notification.type === "duel_result"
+    ) {
+      navigate("/dashboard/student/duel-of-minds");
+      onAction();
     }
   };
 

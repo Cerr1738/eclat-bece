@@ -1,152 +1,127 @@
-import { useEffect, useState, useMemo } from "react";
-import { Building2, Plus, Search, Users, BookOpen } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Building2, Plus, Search, Trash2, Loader2, Edit2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { SchoolLayout } from "@/components/school/SchoolLayout";
+import { SchoolPageHeader } from "@/components/school/SchoolPageHeader";
+import { SchoolDataState } from "@/components/school/SchoolDataState";
+import { SchoolConfirmDialog } from "@/components/school/SchoolConfirmDialog";
 import { CreateClassDialog } from "@/components/school/SchoolCreateDialogs";
+import { useSchoolData, SchoolClassItem } from "@/hooks/useSchoolData";
 import { supabase } from "@/integrations/supabase/client";
-
-interface ClassItem {
-  id?: string;
-  name: string;
-  level: string;
-  teacher?: string | null;
-  studentsCount: number;
-  avgScore: string;
-  badge?: string;
-  subjects: string[];
-}
-
-const defaultClasses: ClassItem[] = [
-  {
-    name: "Year 9 / JSS 3",
-    level: "JSS 3",
-    badge: "BECE Cohort",
-    studentsCount: 142,
-    avgScore: "82%",
-    subjects: ["Mathematics", "English", "Basic Science", "Social Studies"],
-    teacher: "Mrs. Sarah Johnson",
-  },
-  {
-    name: "Year 6 / Primary 6",
-    level: "Primary 6",
-    badge: "Common Entrance",
-    studentsCount: 106,
-    avgScore: "74%",
-    subjects: ["Mathematics", "English", "General Science", "Quantitative"],
-    teacher: "Mr. Chukwuma Okafor",
-  },
-];
+import { toast } from "sonner";
 
 export function SchoolClassesPage() {
+  const { school, students, classes, teachers, isLoading, error, refresh: refreshSchoolData } = useSchoolData();
+  // Registered teachers only — legacy virtual rows (derived from old free-text
+  // lead names) are not real accounts to assign.
+  const registeredTeachers = teachers
+    .filter((t) => !t.id.startsWith("virtual-"))
+    .map((t) => ({ id: t.id, full_name: t.full_name }));
   const [classDialogOpen, setClassDialogOpen] = useState(false);
-  const [createdClasses, setCreatedClasses] = useState<ClassItem[]>([]);
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState("all");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [editTarget, setEditTarget] = useState<SchoolClassItem | null>(null);
 
-  const loadClasses = async () => {
-    try {
-      const { data } = await supabase
-        .from("school_classes" as never)
-        .select("id, name, level, lead_teacher, student_count, average_score")
-        .order("created_at", { ascending: false } as never) as {
-        data: Array<{
-          id: string;
-          name: string;
-          level: string;
-          lead_teacher: string | null;
-          student_count: number;
-          average_score: number;
-        }> | null;
-      };
+  const confirmDeleteClass = () => {
+    if (!deleteTarget) return;
+    const { id, name } = deleteTarget;
+    setDeleteTarget(null);
+    void (async () => {
+      try {
+        setDeletingId(id);
+        const { error } = await supabase
+          .from("school_classes")
+          .delete()
+          .eq("id", id);
 
-      if (data && data.length > 0) {
-        setCreatedClasses(
-          data.map((item) => ({
-            id: item.id,
-            name: item.name,
-            level: item.level,
-            teacher: item.lead_teacher,
-            studentsCount: item.student_count || 0,
-            avgScore: item.average_score > 0 ? `${item.average_score}%` : "—",
-            badge: "Active Class",
-            subjects: ["General Curriculum"],
-          }))
-        );
+        if (error) throw error;
+        toast.success(`Class "${name}" deleted`);
+        refreshSchoolData();
+      } catch (err: any) {
+        console.error("Error deleting class:", err);
+        toast.error(err?.message || "Failed to delete class");
+      } finally {
+        setDeletingId(null);
       }
-    } catch (err) {
-      console.error("Error loading classes:", err);
-    }
+    })();
   };
 
-  useEffect(() => {
-    void loadClasses();
-  }, []);
-
-  const allClasses = useMemo(() => {
-    return [...defaultClasses, ...createdClasses];
-  }, [createdClasses]);
-
   const filteredClasses = useMemo(() => {
-    return allClasses.filter((c) => {
+    return classes.map((c) => ({
+      ...c,
+      avgScoreFormatted: c.avgScore > 0 ? `${c.avgScore}%` : "—",
+    })).filter((c) => {
       const matchesSearch =
         c.name.toLowerCase().includes(search.toLowerCase()) ||
         c.level.toLowerCase().includes(search.toLowerCase()) ||
-        (c.teacher && c.teacher.toLowerCase().includes(search.toLowerCase()));
+        (c.lead_teacher && c.lead_teacher.toLowerCase().includes(search.toLowerCase()));
 
       const matchesLevel =
-        levelFilter === "all" || c.level.toLowerCase().includes(levelFilter.toLowerCase());
+        levelFilter === "all" ||
+        (levelFilter === "year_9" && (c.class_year === "year_9" || c.level.toLowerCase().includes("jss"))) ||
+        (levelFilter === "year_6" && (c.class_year === "year_6" || c.level.toLowerCase().includes("primary")));
 
       return matchesSearch && matchesLevel;
     });
-  }, [allClasses, search, levelFilter]);
+  }, [classes, search, levelFilter]);
 
-  const totalClassesCount = allClasses.length;
-  const totalStudents = allClasses.reduce((acc, c) => acc + c.studentsCount, 0);
+  const totalClassesCount = classes.length;
+  const beceCandidates = students.filter((s) => s.class_year === "year_9").length;
+  const commonEntranceCandidates = students.filter((s) => s.class_year === "year_6").length;
+
+  if (isLoading) {
+    return <SchoolDataState loading />;
+  }
+  if (error) {
+    return <SchoolDataState error={error} onRetry={refreshSchoolData} />;
+  }
 
   return (
-    <SchoolLayout
-      title="Classes & Cohorts"
-      subtitle="Manage examination cohorts, class streams, and assigned faculty."
-      actions={
-        <Button
-          onClick={() => setClassDialogOpen(true)}
-          className="bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff] font-semibold text-xs sm:text-sm"
-        >
-          <Plus className="mr-1.5 h-4 w-4" />
-          Add class
-        </Button>
-      }
-    >
+    <>
+      <SchoolPageHeader
+        title="Classes & Cohorts"
+        subtitle="Manage examination cohorts, class streams, and assigned faculty."
+        actions={
+          <Button
+            onClick={() => { setEditTarget(null); setClassDialogOpen(true); }}
+            className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs sm:text-sm shadow-sm"
+          >
+            <Plus className="mr-1.5 h-4 w-4" />
+            Add class
+          </Button>
+        }
+      />
       {/* Metric Cards */}
       <div className="mb-6 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[
-          ["Total classes", totalClassesCount.toString(), "Active cohorts"],
-          ["Total learners", totalStudents.toString(), "Across all levels"],
-          ["BECE Candidates", "142", "Year 9 students"],
-          ["Primary 6 Candidates", "106", "Common Entrance"],
+          ["Total classes", totalClassesCount.toString(), "Active school cohorts"],
+          ["Total learners", students.length.toString(), "Enrolled in institution"],
+          ["BECE Candidates", beceCandidates.toString(), "Year 9 (JSS 3) students"],
+          ["Common Entrance", commonEntranceCandidates.toString(), "Year 6 (Primary 6) students"],
         ].map(([label, value, hint]) => (
-          <Card key={label} className="border border-[#2a3852] bg-[#151e33] text-slate-100 min-w-0">
+          <Card key={label} className="border border-border bg-card text-card-foreground shadow-sm min-w-0">
             <CardContent className="p-4 sm:p-5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300 truncate">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground truncate">
                 {label}
               </p>
-              <p className="mt-2 text-2xl sm:text-3xl font-black text-white truncate">{value}</p>
-              <p className="mt-1 text-[11px] text-[#51c6eb] truncate">{hint}</p>
+              <p className="mt-2 text-2xl sm:text-3xl font-black text-foreground truncate">{value}</p>
+              <p className="mt-1 text-[11px] text-sky-600 dark:text-[#51c6eb] font-medium truncate">{hint}</p>
             </CardContent>
           </Card>
         ))}
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-xl border border-[#2a3852] bg-[#0f182b] p-3 text-xs">
-        <div className="flex items-center gap-2 flex-1 rounded-lg border border-[#34415b] bg-[#071023] px-3 py-2 text-slate-200">
-          <Search className="h-4 w-4 text-slate-400 flex-shrink-0" />
+      <div className="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 text-xs shadow-sm">
+        <div className="flex items-center gap-2 flex-1 rounded-lg border border-border bg-muted/60 px-3 py-2 text-foreground focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20">
+          <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search classes by name, level or teacher..."
-            className="w-full bg-transparent text-xs text-white placeholder:text-slate-400 focus:outline-none"
+            placeholder="Search classes by name, level or lead teacher..."
+            className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
         </div>
 
@@ -154,69 +129,123 @@ export function SchoolClassesPage() {
           <select
             value={levelFilter}
             onChange={(e) => setLevelFilter(e.target.value)}
-            className="rounded-lg border border-[#34415b] bg-[#071023] px-3 py-2 text-xs text-slate-200 focus:outline-none"
+            className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/30"
           >
-            <option value="all">All Levels</option>
-            <option value="jss 3">JSS 3 (Year 9)</option>
-            <option value="primary 6">Primary 6 (Year 6)</option>
-            <option value="jss">All JSS</option>
+            <option value="all">All Cohorts</option>
+            <option value="year_9">Year 9 / JSS 3 (BECE)</option>
+            <option value="year_6">Year 6 / Primary 6 (Common Entrance)</option>
           </select>
         </div>
       </div>
 
-      {/* Class Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {filteredClasses.map((klass) => (
-          <Card
-            key={klass.name}
-            className="border border-[#2a3852] bg-[#151e33] text-slate-100 min-w-0 hover:border-[#384c6e] transition-colors flex flex-col justify-between"
-          >
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between gap-2">
-                <CardTitle className="text-lg font-bold text-[#71c9ed] leading-tight">
-                  {klass.name}
-                </CardTitle>
-                <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-sky-300 flex-shrink-0">
-                  {klass.badge || klass.level}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 mt-1">
-                Lead: {klass.teacher || "Unassigned"}
+      {/* Loading state */}
+      {isLoading && classes.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-16 rounded-xl border border-border bg-card text-muted-foreground shadow-sm">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+          <p className="text-sm font-semibold">Loading class cohorts...</p>
+        </div>
+      ) : filteredClasses.length === 0 ? (
+        /* Empty State */
+        <Card className="border border-dashed border-border bg-card/60 p-12 text-center shadow-sm">
+          <CardContent className="space-y-4 max-w-md mx-auto">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-primary">
+              <Building2 className="h-7 w-7" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-foreground">No Classes Created Yet</h3>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Organize your school learners into distinct class streams (e.g. JSS 3A, Primary 6 Gold) to manage exam preparation and track cohort averages.
               </p>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-0">
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-lg border border-slate-700/60 bg-[#0c1424] p-2.5">
-                  <p className="text-slate-400 text-[11px]">Students</p>
-                  <p className="mt-1 text-xl font-black text-white">{klass.studentsCount}</p>
-                </div>
-                <div className="rounded-lg border border-slate-700/60 bg-[#0c1424] p-2.5">
-                  <p className="text-slate-400 text-[11px]">Avg Score</p>
-                  <p className="mt-1 text-xl font-black text-[#7dd3fc]">{klass.avgScore}</p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {klass.subjects.map((subject) => (
-                  <span
-                    key={subject}
-                    className="rounded-md border border-slate-700 bg-slate-900/60 px-2 py-0.5 text-[11px] text-slate-300"
-                  >
-                    {subject}
+            </div>
+            <Button
+              onClick={() => { setEditTarget(null); setClassDialogOpen(true); }}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold"
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              Create First Class
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        /* Class Cards Grid */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filteredClasses.map((klass) => (
+            <Card
+              key={klass.id}
+              className="border border-border bg-card text-card-foreground min-w-0 hover:border-primary/40 transition-colors flex flex-col justify-between shadow-sm"
+            >
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="text-lg font-bold text-foreground leading-tight truncate">
+                    {klass.name}
+                  </CardTitle>
+                  <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300 flex-shrink-0">
+                    {klass.badge}
                   </span>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 truncate">
+                  Lead: {klass.lead_teacher || "Unassigned"}
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-0">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg border border-border bg-muted/40 p-2.5">
+                    <p className="text-muted-foreground text-[11px]">Enrolled</p>
+                    <p className="mt-1 text-xl font-black text-foreground">{klass.studentsCount}</p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/40 p-2.5">
+                    <p className="text-muted-foreground text-[11px]">Cohort Avg</p>
+                    <p className="mt-1 text-xl font-black text-primary">{klass.avgScoreFormatted}</p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground">
+                  <span className="text-[11px] text-muted-foreground">
+                    Level: {klass.level}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Edit class ${klass.name}`}
+                      onClick={() => { setEditTarget(klass); setClassDialogOpen(true); }}
+                      className="h-7 px-2 text-muted-foreground hover:bg-muted"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={deletingId === klass.id}
+                      aria-label={`Delete class ${klass.name}`}
+                      onClick={() => setDeleteTarget({ id: klass.id, name: klass.name })}
+                      className="h-7 px-2 text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <CreateClassDialog
+        teachers={registeredTeachers}
+        editClass={editTarget}
         open={classDialogOpen}
         onOpenChange={setClassDialogOpen}
-        onCreated={() => void loadClasses()}
+        onCreated={refreshSchoolData}
       />
-    </SchoolLayout>
+      <SchoolConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={`Delete class "${deleteTarget?.name}"?`}
+        description="Students enrolled in this class will be unassigned. This action cannot be undone."
+        onConfirm={confirmDeleteClass}
+      />
+    </>
   );
 }
 

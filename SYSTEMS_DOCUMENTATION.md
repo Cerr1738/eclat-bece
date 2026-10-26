@@ -232,6 +232,7 @@ Question data for each class year.
 - `difficulty` (TEXT) - 'easy', 'medium', 'hard'
 - `image_url` (TEXT)
 - `passage_id` (UUID, FK) - References comprehension_passages
+- `uploaded_by` (UUID, FK) - References auth.users(id); the admin who uploaded the question. Stamped automatically by a BEFORE INSERT trigger via `auth.uid()` (service-role callers can pass it explicitly). Backfilled from admin_audit_log (per-question create events, then batch-level bulk events matched by class year + a 15-minute creation window when unambiguous); a small ambiguous remainder is null.
 - `created_at` (TIMESTAMPTZ)
 - `updated_at` (TIMESTAMPTZ)
 
@@ -271,20 +272,23 @@ Student quiz completion records.
 - Admins can view all results
 
 #### `flagged_questions`
-Student-reported question issues.
+Student-reported question issues. Question content (`subject`, `topic`, `question_text`, `uploaded_by`) is a snapshot taken at report time, so reports survive question edits/deletes (`question_id` has no FK by design — it can point to either question table).
 - `id` (UUID, PK)
 - `student_id` (UUID, FK) - References students.id
-- `class_year` (TEXT)
+- `class_year` (TEXT) - 'year_6' | 'year_9'
 - `question_id` (UUID)
 - `subject` (TEXT)
 - `topic` (TEXT)
 - `question_text` (TEXT)
-- `reason` (TEXT) - 'incorrect_answer', 'typo', 'missing_image', 'incomplete', 'other'
+- `reason` (TEXT, CHECK) - 'incorrect_answer', 'typo', 'missing_image', 'incomplete', 'other'
 - `details` (TEXT)
-- `status` (TEXT) - 'pending', 'resolved', 'dismissed'
+- `status` (TEXT, NOT NULL DEFAULT 'pending', CHECK) - 'pending', 'resolved', 'dismissed'
+- `uploaded_by` (UUID, FK) - References auth.users(id); snapshot of the question's uploader, set by the `set_flag_uploaded_by` trigger from quiz_questions_year6/year9 (null if the question was deleted)
 - `created_at` (TIMESTAMPTZ)
 - `resolved_at` (TIMESTAMPTZ)
-- `resolved_by` (UUID, FK) - References profiles.id
+- `resolved_by` (UUID, FK) - References profiles.id; the admin who resolved/dismissed
+
+**Indexes:** (status, created_at DESC), question_id, class_year, student_id.
 
 **RLS Policies:**
 - Students can insert flags
@@ -1177,13 +1181,22 @@ All admin actions are logged to `admin_audit_log` table via `log_admin_action` f
 
 ### School Dashboard
 
-**Page:** `SchoolDashboard` (`/dashboard/school`)
+**Page:** `SchoolOverviewPage` (`/dashboard/school`) — one of 9 routed school pages exported from `src/pages/school/SchoolDashboardPages.tsx`
 
-**Features:**
-- School overview
-- Linked students
-- School analytics
-- School unique code for student linking
+**Routed school pages:**
+- `/dashboard/school` - `SchoolOverviewPage` (stats, top subject by mastery, top achievers)
+- `/dashboard/school/students` - `SchoolStudentsPage`
+- `/dashboard/school/teachers` - `SchoolTeachersPage` (teacher registry, departments, class allocations)
+- `/dashboard/school/classes` - `SchoolClassesPage` (classes and arms)
+- `/dashboard/school/assignments` - `SchoolAssignmentsPage`
+- `/dashboard/school/reports` - `SchoolReportsPage`
+- `/dashboard/school/exams` - `SchoolExamsPage` (exam scheduler, candidate seating roster)
+- `/dashboard/school/leaderboard` - `SchoolLeaderboardPage`
+- `/dashboard/school/settings` - `SchoolSettingsPage`
+
+**Data layer:** the `useSchoolData` hook (TanStack Query, key `queryKeys.school`) aggregates schools, students, school_classes, practice_assignments, school_exams, school_teachers, profiles, quiz_results, and gamification data client-side in one cached query shared by all nine pages; per-student metric pulls are capped and the hook surfaces `isLoading`/`error` that every page renders through `SchoolDataState` (loading spinner or error + retry — never a fake empty state).
+
+**Security hardening (2026-10):** the school portal runs as a persistent layout route (`SchoolLayout` + `<Outlet/>` + local Suspense). RLS is fully tenant-scoped — the former platform-wide `USING (true)` reads on `students`, `profiles`, and `quiz_results` were removed; features that needed broad reads now use scoped SECURITY DEFINER RPCs (`get_platform_student_rank`, `search_duel_opponents`, `lookup_student_by_code`, `lookup_parent_by_code`). Schools may only assign practice to their own students (trigger-enforced), students cannot change their own `school_id`/`class_id` (parent linking is allowed only for the first `NULL → parent` transition), exams/teachers may only reference same-school classes, and the league cohort RPCs reject unauthenticated callers while keeping the service-role path for `complete-quiz-session`.
 
 ### School Onboarding
 
@@ -1203,9 +1216,58 @@ All admin actions are logged to `admin_audit_log` table via `log_admin_action` f
 
 Schools can link students using their unique school code (stored in `schools.unique_code`).
 
+### Teacher Accounts & Portal
+
+Teachers are provisioned by schools — there is no self-signup.
+
+**Identity:** the `school_teachers` registry row doubles as the teacher's domain record and gains a nullable `user_id uuid UNIQUE → auth.users(id)` link. The `app_role` enum includes `'teacher'`. Practice assignments created by teachers carry `created_by_teacher_id` (FK → `school_teachers`).
+
+**Provisioning:** `create-teacher-account` Edge Function (verify_jwt). Caller must be the owning school (`schools.user_id` match). Actions: **create-and-link** (auth user with `email_confirm: true` → `user_roles('teacher')` → `profiles(email_verified: true)` → `school_teachers.user_id` link, with user-deletion rollback) and **reset-password** (for linked teachers). The school UI lives in the Teachers page: Add dialog has an optional "Create login account" section; Edit dialog has a Teacher Portal Login panel (status pill + create-login / reset-password).
+
+**Login:** `/teacher-login` (email + password). `TeacherLoginPage` checks the authoritative `user_roles.role === 'teacher'` and signs wrong-role users out; no `provision-user` fallback (teachers cannot self-provision).
+
+**Teacher portal** (`/dashboard/teacher`, persistent `TeacherLayout` shell + `ProtectedRoute requiredRole="teacher"` with a `school_teachers`-link gate): Dashboard (allocated classes, students, pending tasks, roster average), My Students (class-scoped roster with averages, per-student Report via `StudentReportDialog` and Assign actions), Assignments (task list with school/teacher attribution). All data flows through `useTeacherData` (TanStack Query, `queryKeys.teacher`).
+
+**Access model (RLS):** every teacher policy derives from their own `school_teachers` row — they see their school's classes, students whose `class_id` is in their `allocated_class_ids` array, those students' profiles/quiz results/assignments, and can INSERT practice assignments only for allocated-class students with their own `created_by_teacher_id` (school matches, teacher Active). The `enforce_practice_assignment_rules` trigger independently re-validates the teacher allocation branch, and the premium/10-question cap applies to teacher-created tasks too.
+
 ---
 
 ## Quiz & Practice System
+
+### Server-Authoritative Scoring (quiz sessions)
+
+Quiz scoring is enforced server-side. Correct answers are never shipped to the
+browser; per-question grading and the EP pipeline run on the server.
+
+**Flow (client `src/services/quizSession.ts`):**
+1. `start_quiz_session` (RPC) — opens a `quiz_sessions` row for the student,
+   validates the daily-challenge lock server-side, and receives only question
+   IDs. The client then fetches sanitized question content (no
+   `correct_answer`, options without `is_correct`).
+2. `submit_quiz_answer` (RPC) — grades each answer server-side against the
+   option rows and returns `{is_correct, correct_index, explanation}` for the
+   instant-feedback UI; the graded answer is stored in
+   `quiz_session_answers` with real per-question timing.
+3. `complete-quiz-session` (Edge Function) — re-grades from stored answers,
+   runs the EP pipeline (points, anti-gaming with real timings, mastery,
+   streak, daily challenge, badges) using the shared TypeScript engines in
+   `supabase/functions/_shared/gamification/` (re-exported to the client via
+   `src/services/gamification/*` shims), writes `quiz_results`, the points
+   ledger, mastery, badges, gamification profile and league cohort points,
+   updates assignment status and notifies the parent.
+4. `submit_duel_turn` (RPC) — records arena turns and resolves winner/EP
+   server-side.
+
+**Hardening:** `assign_student_to_weekly_cohort` and
+`update_student_cohort_points` validate the caller; the points-ledger
+reconciliation job is scheduled via pg_cron (`reconcile-student-points`,
+daily 02:15 UTC).
+
+**Rollout gate:** migration
+`20261002230000_..._phase_b_rls_lockdown.sql` revokes the legacy client write
+policies (ledger/profile/badges/mastery/cohort/quiz_results INSERTs). It must
+only be applied AFTER the client using the session flow above is deployed —
+see the header of that migration for details and rollback notes.
 
 ### Question Structure
 

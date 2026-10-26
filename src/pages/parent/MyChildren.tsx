@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState } from "react";
 import { Users, Plus, LayoutDashboard, Search, Filter } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
 import { StudentReportDialog } from "@/components/StudentReportDialog";
 import { AssignPracticeDialog } from "@/components/AssignPracticeDialog";
 import { ChildOverviewCard } from "@/components/parent/ChildOverviewCard";
@@ -17,23 +16,27 @@ import { ChangeChildPasswordDialog } from "@/components/parent/ChangeChildPasswo
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useParentAccount } from "@/hooks/useParentAccount";
-import { LinkedChild, ChildAnalytics, Assignment, QuizResult } from "@/types/parent";
+import { useChildrenData } from "@/hooks/useChildrenData";
+import { LinkedChild, Assignment } from "@/types/parent";
 import { getEdgeFunctionError } from "@/lib/errorUtils";
 import { QuestionSnapshotDialog } from "@/components/quiz/QuestionSnapshotDialog";
+import { PortalDataState } from "@/components/PortalDataState";
 
 const getErrorMessage = (error: unknown, fallback: string) =>
     error instanceof Error ? error.message : fallback;
 
 export default function MyChildren() {
     const navigate = useNavigate();
-    const { user } = useAuth();
     const { parentId, loading: parentAccountLoading } = useParentAccount();
 
-    const [children, setChildren] = useState<LinkedChild[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [parentUserId, setParentUserId] = useState<string | null>(null);
-    const [childrenAnalytics, setChildrenAnalytics] = useState<Map<string, ChildAnalytics>>(new Map());
-    const [childrenAssignments, setChildrenAssignments] = useState<Map<string, Assignment[]>>(new Map());
+    const {
+        children,
+        childrenAnalytics,
+        childrenAssignments,
+        isLoading,
+        error: childrenError,
+        refresh: refreshChildren,
+    } = useChildrenData(parentId);
 
     const [reportOpen, setReportOpen] = useState(false);
     const [assignOpen, setAssignOpen] = useState(false);
@@ -104,7 +107,7 @@ export default function MyChildren() {
             }
 
             const qIds = qData.map((q: any) => q.id);
-            const { data: optData } = await supabase.from(optionsTableName as any).select("*").in("question_id", qIds).order("display_order");
+            const { data: optData } = await supabase.from(optionsTableName).select("*").in("question_id", qIds).order("display_order");
             const optMap = (optData || []).reduce((acc: any, opt: any) => {
                 if (!acc[opt.question_id]) acc[opt.question_id] = [];
                 acc[opt.question_id].push(opt);
@@ -143,114 +146,6 @@ export default function MyChildren() {
     const [selectedChild, setSelectedChild] = useState<LinkedChild | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
 
-    const fetchChildren = useCallback(async (pId: string) => {
-        try {
-            const { data, error } = await supabase
-                .from("students")
-                .select(`
-                    id,
-                    user_id,
-                    class_year,
-                    is_premium,
-                    profile:profiles(full_name, unique_id, username)
-                `)
-                .eq("parent_id", pId);
-
-            if (error) throw error;
-
-            if (data && data.length > 0) {
-                const studentIds = data.map((c) => c.id);
-
-                // Batched parallel queries for all children
-                const [quizzesRes, assignmentsRes] = await Promise.all([
-                    supabase
-                        .from("quiz_results")
-                        .select("*")
-                        .in("student_id", studentIds)
-                        .order("completed_at", { ascending: false }),
-                    supabase
-                        .from("practice_assignments")
-                        .select("*")
-                        .in("student_id", studentIds)
-                        .order("created_at", { ascending: false }),
-                ]);
-
-                const allQuizzes = (quizzesRes.data || []) as QuizResult[];
-                const allAssignments = (assignmentsRes.data || []) as Assignment[];
-
-                const assignMap = new Map<string, Assignment[]>();
-                const analyticsMap = new Map<string, ChildAnalytics>();
-
-                studentIds.forEach((sId) => {
-                    const childAssignments = allAssignments.filter((a) => a.student_id === sId);
-                    assignMap.set(sId, childAssignments);
-
-                    const childQuizzes = allQuizzes.filter((q) => q.student_id === sId);
-                    const pending = childAssignments.filter((a) => a.status === "pending").length;
-                    const completed = childAssignments.filter((a) => a.status === "completed").length;
-
-                    if (childQuizzes.length > 0) {
-                        const averageScore = childQuizzes.reduce((acc, result) => acc + result.score, 0) / childQuizzes.length;
-                        const subjectMap = new Map<string, { totalScore: number; count: number }>();
-                        childQuizzes.forEach((result) => {
-                            const existing = subjectMap.get(result.subject) || { totalScore: 0, count: 0 };
-                            subjectMap.set(result.subject, {
-                                totalScore: existing.totalScore + result.score,
-                                count: existing.count + 1,
-                            });
-                        });
-
-                        const subjectPerformance = Array.from(subjectMap.entries()).map(([subject, subData]) => ({
-                            subject: subject.charAt(0).toUpperCase() + subject.slice(1),
-                            avgScore: Math.round(subData.totalScore / subData.count),
-                            count: subData.count,
-                        }));
-
-                        analyticsMap.set(sId, {
-                            studentId: sId,
-                            averageScore: Math.round(averageScore),
-                            totalQuizzes: childQuizzes.length,
-                            subjectPerformance,
-                            recentQuizzes: childQuizzes.slice(0, 5) as QuizResult[],
-                            pendingAssignments: pending,
-                            completedAssignments: completed,
-                        });
-                    } else {
-                        analyticsMap.set(sId, {
-                            studentId: sId,
-                            averageScore: 0,
-                            totalQuizzes: 0,
-                            subjectPerformance: [],
-                            recentQuizzes: [],
-                            pendingAssignments: pending,
-                            completedAssignments: completed,
-                        });
-                    }
-                });
-
-                setChildren(data as unknown as LinkedChild[]);
-                setChildrenAssignments(assignMap);
-                setChildrenAnalytics(analyticsMap);
-            } else {
-                setChildren([]);
-            }
-        } catch (error) {
-            console.error("Error fetching children:", error);
-            toast.error("Failed to load students");
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        if (parentId) {
-            setParentUserId(parentId);
-            fetchChildren(parentId);
-        } else if (!parentAccountLoading) {
-            setIsLoading(false);
-        }
-    }, [parentId, parentAccountLoading, fetchChildren]);
-
     const handleDeleteChild = async () => {
         if (!selectedChild) return;
         try {
@@ -264,7 +159,7 @@ export default function MyChildren() {
             if (data?.error) throw new Error(data.error);
             toast.success(`${selectedChild.profile.full_name}'s account deleted`);
             setDeleteDialogOpen(false);
-            if (parentUserId) fetchChildren(parentUserId);
+            refreshChildren();
         } catch (error: unknown) {
             toast.error(error instanceof Error ? error.message : "Failed to delete account");
         }
@@ -275,19 +170,27 @@ export default function MyChildren() {
         child.profile.username?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    // Failures must not masquerade as an empty family.
+    if (isLoading) {
+        return <PortalDataState loading />;
+    }
+    if (childrenError) {
+        return <PortalDataState error={childrenError} onRetry={refreshChildren} />;
+    }
+
     return (
         <div className="w-full space-y-6 sm:space-y-8 animate-fade-in">
             {/* Header Section */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <div className="inline-flex items-center gap-1.5 rounded-full border border-[#2d4b68] bg-[#0c2438] px-3 py-1 text-[11px] font-semibold text-[#58c4e8]">
+                    <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-semibold text-primary">
                         <Users className="h-3.5 w-3.5" />
                         <span>Learner Management</span>
                     </div>
-                    <h1 className="mt-2 text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-[#71c9ed]">
-                        My Children<span className="text-[#3bc2f3]">.</span>
+                    <h1 className="mt-2 text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-foreground">
+                        My Children<span className="text-primary">.</span>
                     </h1>
-                    <p className="mt-1 text-xs sm:text-sm text-slate-400">
+                    <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
                         Manage student profiles, view comprehensive exam stats, and assign practice.
                     </p>
                 </div>
@@ -295,14 +198,14 @@ export default function MyChildren() {
                     <Button
                         onClick={() => navigate("/dashboard/parent")}
                         variant="outline"
-                        className="border-slate-700 bg-slate-900/60 text-slate-200 hover:bg-slate-800 text-xs sm:text-sm"
+                        className="text-xs sm:text-sm"
                     >
                         <LayoutDashboard className="mr-1.5 h-4 w-4" />
                         Dashboard
                     </Button>
                     <Button
                         onClick={() => setAddChildOpen(true)}
-                        className="bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff] font-semibold text-xs sm:text-sm"
+                        className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs sm:text-sm shadow-sm"
                     >
                         <Plus className="mr-1.5 h-4 w-4" />
                         Add New Child
@@ -312,28 +215,28 @@ export default function MyChildren() {
 
             {/* Metrics Overview */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-                <Card className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100 p-4 sm:p-5">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Enrolled Children</p>
+                <Card className="rounded-2xl border border-border bg-card text-card-foreground shadow-sm p-4 sm:p-5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Enrolled Children</p>
                     <div className="flex items-baseline gap-2 mt-1">
-                        <p className="text-2xl sm:text-3xl font-black text-white">{children.length}</p>
-                        <p className="text-xs text-[#58c4e8]">Active</p>
+                        <p className="text-2xl sm:text-3xl font-black text-foreground">{children.length}</p>
+                        <p className="text-xs text-primary font-medium">Active</p>
                     </div>
                 </Card>
-                <Card className="rounded-2xl border border-[#233148] bg-[#0c1628] text-slate-100 p-4 sm:p-5">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Premium Access</p>
+                <Card className="rounded-2xl border border-border bg-card text-card-foreground shadow-sm p-4 sm:p-5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Premium Access</p>
                     <div className="flex items-baseline gap-2 mt-1">
-                        <p className="text-2xl sm:text-3xl font-black text-amber-400">{children.filter(c => c.is_premium).length}</p>
-                        <p className="text-xs text-amber-400/70">VIP</p>
+                        <p className="text-2xl sm:text-3xl font-black text-amber-500">{children.filter(c => c.is_premium).length}</p>
+                        <p className="text-xs text-amber-500/80 font-medium">VIP</p>
                     </div>
                 </Card>
             </div>
 
             {/* Search and Filters */}
             <div className="relative max-w-md">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                     placeholder="Search by name or username..."
-                    className="pl-10 h-10 rounded-xl border border-[#26344d] bg-[#0d162a] text-xs sm:text-sm text-slate-200 placeholder:text-slate-400 focus:border-[#3bc2f3]/60 focus:ring-1 focus:ring-[#3bc2f3]/20"
+                    className="pl-10 h-10 rounded-xl border border-border bg-background text-xs sm:text-sm text-foreground placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-primary"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -342,7 +245,7 @@ export default function MyChildren() {
             {/* Children Grid */}
             {isLoading ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                    {[1, 2].map(i => <div key={i} className="h-64 rounded-2xl bg-[#0c1628] animate-pulse border border-[#233148]" />)}
+                    {[1, 2].map(i => <div key={i} className="h-64 rounded-2xl bg-card animate-pulse border border-border" />)}
                 </div>
             ) : filteredChildren.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-20">
@@ -424,8 +327,8 @@ export default function MyChildren() {
             <AddChildDialog
                 open={addChildOpen}
                 onOpenChange={setAddChildOpen}
-                parentId={parentUserId}
-                onSuccess={() => parentUserId && fetchChildren(parentUserId)}
+                parentId={parentId}
+                onSuccess={() => refreshChildren()}
             />
 
             <DummyPaymentModal
@@ -433,7 +336,7 @@ export default function MyChildren() {
                 onOpenChange={setPaymentModalOpen}
                 studentId={selectedChild?.id || ""}
                 studentName={selectedChild?.profile.full_name || ""}
-                onSuccess={() => parentUserId && fetchChildren(parentUserId)}
+                onSuccess={() => refreshChildren()}
             />
 
             <DeleteChildDialog
@@ -448,14 +351,14 @@ export default function MyChildren() {
                 open={editNameOpen}
                 onOpenChange={setEditNameOpen}
                 child={selectedChild}
-                onSuccess={() => parentUserId && fetchChildren(parentUserId)}
+                onSuccess={() => refreshChildren()}
             />
 
             <EditChildUsernameDialog
                 open={editUsernameOpen}
                 onOpenChange={setEditUsernameOpen}
                 child={selectedChild ? { id: selectedChild.id, profile: { username: selectedChild.profile.username } } : null}
-                onSuccess={() => parentUserId && fetchChildren(parentUserId)}
+                onSuccess={() => refreshChildren()}
             />
 
             <ChangeChildPasswordDialog

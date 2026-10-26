@@ -1,5 +1,10 @@
 project_id = "mihobsoagioiknerlgae"
 
+[functions.complete-quiz-session]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/complete-quiz-session/index.ts"
+
 [functions.send-verification-email]
 verify_jwt = false
 
@@ -27,6 +32,11 @@ entrypoint = "./functions/create-student-account/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/manage-student-account/index.ts"
+
+[functions.create-teacher-account]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/create-teacher-account/index.ts"
 
 [functions.delete-student-account]
 enabled = true

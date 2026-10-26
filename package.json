@@ -10,7 +10,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc -b tsconfig.app.json",
+    "check:text": "node scripts/check-mojibake.mjs --check",
+    "types:regen": "npx supabase gen types typescript --linked > src/integrations/supabase/types.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

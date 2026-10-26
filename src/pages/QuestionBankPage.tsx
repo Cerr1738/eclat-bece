@@ -56,11 +56,12 @@ import {
 interface Question {
     id: string;
     subject: string;
-    topic: string;
+    topic: string | null;
     question_text: string;
     difficulty: string;
     created_at: string;
     image_url?: string | null;
+    uploaded_by: string | null;
 }
 
 const ITEMS_PER_PAGE = 50;
@@ -79,6 +80,7 @@ export default function QuestionBankPage() {
     const [editQuestion, setEditQuestion] = useState<{ id: string; classYear: "year_6" | "year_9" } | null>(null);
     const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
     const [duplicateClusterCount, setDuplicateClusterCount] = useState<number | null>(null);
+    const [uploaderNames, setUploaderNames] = useState<Record<string, string>>({});
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
@@ -97,7 +99,7 @@ export default function QuestionBankPage() {
 
     const fetchDuplicateCount = useCallback(async () => {
         try {
-            const { data, error } = await supabase.rpc("count_duplicate_question_clusters" as any, {
+            const { data, error } = await supabase.rpc("count_duplicate_question_clusters", {
                 p_class_year: classYear,
             });
             if (!error && typeof data === "number") {
@@ -120,8 +122,8 @@ export default function QuestionBankPage() {
             const to = from + ITEMS_PER_PAGE - 1;
 
             let query = supabase
-                .from(tableName as any)
-                .select("id, subject, topic, question_text, difficulty, created_at, image_url", { count: 'exact' })
+                .from(tableName)
+                .select("id, subject, topic, question_text, difficulty, created_at, image_url, uploaded_by", { count: 'exact' })
                 .order("created_at", { ascending: false })
                 .range(from, to);
 
@@ -146,6 +148,27 @@ export default function QuestionBankPage() {
                 setTotalItems(count);
                 setTotalPages(Math.ceil(count / ITEMS_PER_PAGE));
             }
+
+            // Resolve uploader display names. The admins table's RLS only lets an
+            // admin read their own row, so names come from a gated SECURITY DEFINER RPC.
+            const uploaderIds = [...new Set((data || [])
+                .map((q) => q.uploaded_by)
+                .filter((id): id is string => !!id))];
+            if (uploaderIds.length > 0) {
+                const { data: nameRows, error: namesError } = await supabase
+                    .rpc("get_admin_display_names", { p_user_ids: uploaderIds });
+                if (namesError) {
+                    console.error("Error fetching uploader names:", namesError);
+                } else if (nameRows) {
+                    setUploaderNames((prev) => {
+                        const next = { ...prev };
+                        for (const row of nameRows) {
+                            next[row.user_id] = row.full_name;
+                        }
+                        return next;
+                    });
+                }
+            }
         } catch (error) {
             console.error("Error fetching questions:", error);
             toast.error("Failed to load questions");
@@ -167,7 +190,7 @@ export default function QuestionBankPage() {
 
             // Get question details before deletion for logging
             const { data: questionData } = await supabase
-                .from(tableName as any)
+                .from(tableName)
                 .select('question_text, subject, topic, difficulty, image_url')
                 .eq('id', deleteId)
                 .single();
@@ -175,7 +198,7 @@ export default function QuestionBankPage() {
             // Find any option images to delete
             const optionsTableName = classYear === 'year_6' ? 'quiz_options_year6' : 'quiz_options_year9';
             const { data: optionsData } = await supabase
-                .from(optionsTableName as any)
+                .from(optionsTableName)
                 .select('image_url')
                 .eq('question_id', deleteId);
 
@@ -210,7 +233,7 @@ export default function QuestionBankPage() {
             }
 
             const { error } = await supabase
-                .from(tableName as any)
+                .from(tableName)
                 .delete()
                 .eq("id", deleteId);
 
@@ -327,18 +350,19 @@ export default function QuestionBankPage() {
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead className="w-[400px]">Question</TableHead>
+                            <TableHead className="w-[360px]">Question</TableHead>
                             <TableHead>Subject</TableHead>
                             <TableHead>Topic</TableHead>
                             <TableHead>Difficulty</TableHead>
                             <TableHead>Created</TableHead>
+                            <TableHead>Uploaded By</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {loading ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="h-24 text-center">
+                                <TableCell colSpan={7} className="h-24 text-center">
                                     <div className="flex justify-center items-center gap-2">
                                         <Loader2 className="h-4 w-4 animate-spin" />
                                         Loading questions...
@@ -347,7 +371,7 @@ export default function QuestionBankPage() {
                             </TableRow>
                         ) : questions.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                                     No questions found.
                                 </TableCell>
                             </TableRow>
@@ -357,7 +381,7 @@ export default function QuestionBankPage() {
                                     <TableCell>
                                         <div className="flex items-center gap-2">
                                             {question.image_url && (
-                                                <ImageIcon className="h-4 w-4 text-primary shrink-0" title="Has image attachment" />
+                                                <ImageIcon className="h-4 w-4 text-primary shrink-0" aria-label="Has image attachment" />
                                             )}
                                             <div className="line-clamp-2" title={question.question_text}>
                                                 {question.question_text}
@@ -386,6 +410,11 @@ export default function QuestionBankPage() {
                                     </TableCell>
                                     <TableCell className="text-muted-foreground text-sm">
                                         {format(new Date(question.created_at), "MMM d, yyyy")}
+                                    </TableCell>
+                                    <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
+                                        {question.uploaded_by
+                                            ? uploaderNames[question.uploaded_by] ?? "Unknown"
+                                            : "—"}
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex justify-end gap-2">

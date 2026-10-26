@@ -145,6 +145,31 @@ describe("Arena Engine - Head-to-Head Duel of Minds (PRD Section 3.9 & 4)", () =
       expect(res.streakBonusEP).toBe(200);
       expect(res.totalEP).toBe(250); // 50 base + 200 streak
     });
+
+    it("awards no streak bonus at non-milestone streaks (SQL parity)", () => {
+      // submit_duel_turn's CASE only fires at exactly 3/5/10.
+      const atFour = calculateArenaMatchEP({
+        outcome: "win",
+        playerTier: 3,
+        opponentTier: 3,
+        currentWinStreak: 3,
+        matchesBetweenPairToday: 0,
+      });
+      const atEleven = calculateArenaMatchEP({
+        outcome: "win",
+        playerTier: 3,
+        opponentTier: 3,
+        currentWinStreak: 10,
+        matchesBetweenPairToday: 0,
+      });
+
+      expect(atFour.newWinStreak).toBe(4);
+      expect(atFour.streakBonusEP).toBe(0);
+      expect(atFour.totalEP).toBe(50);
+      expect(atEleven.newWinStreak).toBe(11);
+      expect(atEleven.streakBonusEP).toBe(0);
+      expect(atEleven.totalEP).toBe(50);
+    });
   });
 
   describe("Anti-Collusion Safeguard (PRD Section 4: Abuse Vector 5)", () => {

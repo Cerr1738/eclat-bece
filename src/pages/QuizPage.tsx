@@ -21,7 +21,8 @@ import {
   Flame,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import type { Json } from "@/integrations/supabase/types";
+import type { Database } from "@/integrations/supabase/types";
+import { startQuizSession, submitQuizAnswer, completeQuizSession, abandonQuizSessionServer, isDailyChallengeError } from "@/services/quizSession";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -46,8 +47,8 @@ import { QuestionSnapshotDialog } from "@/components/quiz/QuestionSnapshotDialog
 import { PointBreakdownLedger } from "@/components/gamification/PointBreakdownLedger";
 import { BadgeUnlockModal } from "@/components/gamification/BadgeUnlockModal";
 import { submitDuelTurn } from "@/services/gamification/arenaService";
-import { recordSessionGamification, GamificationSessionOutcome } from "@/services/gamification/gamificationService";
-import { DifficultyLevel } from "@/services/gamification/types";
+import { GamificationSessionOutcome } from "@/services/gamification/gamificationService";
+import { DifficultyLevel, ArenaMatchResult } from "@/services/gamification/types";
 import { BadgeDefinition } from "@/services/gamification/badgeEngine";
 import { getDailyChallengeCountdown } from "@/services/gamification/dailyChallengeEngine";
 
@@ -86,7 +87,7 @@ export default function QuizPage() {
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
-  const [duelOutcome, setDuelOutcome] = useState<{ isMatchComplete: boolean; matchResult?: any } | null>(null);
+  const [duelOutcome, setDuelOutcome] = useState<{ isMatchComplete: boolean; matchResult?: ArenaMatchResult } | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -113,6 +114,12 @@ export default function QuizPage() {
   // Daily Challenge Hard Lock State
   const [dailyChallengeLocked, setDailyChallengeLocked] = useState(false);
   const [dailyChallengeCountdown, setDailyChallengeCountdown] = useState<string>("");
+
+  // Server-authoritative session state
+  const [quizSessionId, setQuizSessionId] = useState<string | null>(null);
+  const [grading, setGrading] = useState(false);
+  const gradingRef = useRef(false);
+  const questionStartRef = useRef<number>(Date.now());
 
   useEffect(() => {
     if (!isDailyChallenge) return;
@@ -162,8 +169,14 @@ export default function QuizPage() {
       const todayUTC = new Date().toISOString().split("T")[0];
       return `eclat_daily_challenge_${user.id}_${todayUTC}`;
     }
+    if (isDuel && duelId) {
+      // Duels must never share a cache key with each other or with mixed
+      // practice — a shared key could restore one duel's session and submit
+      // its answers to another duel.
+      return `eclat_quiz_cache_${user.id}_duel_${duelId}`;
+    }
     return `eclat_quiz_cache_${user.id}_${assignmentId || subject || "mixed"}_${topic || "all"}`;
-  }, [user, assignmentId, subject, topic, isDailyChallenge]);
+  }, [user, assignmentId, subject, topic, isDailyChallenge, isDuel, duelId]);
 
   const clearSessionCache = useCallback(() => {
     const key = getSessionCacheKey();
@@ -256,7 +269,7 @@ export default function QuizPage() {
             let alreadyCompletedToday = false;
 
             // Primary check: gamification profile date stamp
-            const { data: gameProfile } = await (supabase as any)
+            const { data: gameProfile } = await supabase
               .from("student_gamification_profile")
               .select("last_daily_challenge_date")
               .eq("student_id", studentRecord.id)
@@ -268,7 +281,7 @@ export default function QuizPage() {
 
             // Fallback 1: points ledger for daily_challenge entries today
             if (!alreadyCompletedToday) {
-              const { data: todayLedger } = await (supabase as any)
+              const { data: todayLedger } = await supabase
                 .from("student_points_ledger")
                 .select("id")
                 .eq("student_id", studentRecord.id)
@@ -298,8 +311,7 @@ export default function QuizPage() {
 
             if (alreadyCompletedToday) {
               // Ensure gamification profile has date recorded
-              await (supabase as any)
-                .from("student_gamification_profile")
+              await supabase.from("student_gamification_profile")
                 .update({ last_daily_challenge_date: todayUTC })
                 .eq("student_id", studentRecord.id);
 
@@ -341,7 +353,11 @@ export default function QuizPage() {
 
           // If in review mode and snapshot exists, open directly in review mode
           if (isReviewMode && assignment.questions_snapshot) {
-            const snap = assignment.questions_snapshot as any;
+            const snap = assignment.questions_snapshot as unknown as {
+              questions?: Array<Record<string, any>>;
+              answers?: (boolean | null)[];
+              userResponses?: (number | null)[];
+            };
             if (snap.questions && snap.questions.length > 0) {
               const sortedQuestions = [...snap.questions].sort((a: any, b: any) => {
                 const orderA = a.question_number ?? a.original_order ?? 0;
@@ -356,7 +372,7 @@ export default function QuizPage() {
                 q.userResponse !== undefined ? q.userResponse : (snap.userResponses?.[i] ?? null)
               );
 
-              setQuestions(sortedQuestions);
+              setQuestions(sortedQuestions as unknown as Question[]);
               setUserResponses(sortedResponses);
               setAnswers(sortedAnswers);
               setScore(sortedAnswers.filter(Boolean).length);
@@ -370,30 +386,71 @@ export default function QuizPage() {
           fetchSubject = assignment.subject;
           fetchTopics = assignment.topics;
           fetchLimit = assignment.num_questions;
-          classYear = (assignment.student as any)?.class_year;
+          classYear = (assignment.student as { class_year?: string } | null)?.class_year || "";
         }
 
-        // If duel challenge, fetch duel details and question IDs
+        // If duel challenge, fetch duel details and verify participation & attempt lock
         let duelQuestionIds: string[] = [];
         if (duelId) {
-          const { data: duelData } = await (supabase as any)
+          const { data: studentRecord } = await supabase
+            .from("students")
+            .select("id, class_year")
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          if (!studentRecord) {
+            toast.error("Student record not found");
+            navigate("/dashboard/student");
+            return;
+          }
+          classYear = studentRecord.class_year;
+
+          const { data: duelData, error: duelErr } = await supabase
             .from("arena_challenges")
-            .select("subject, topic, max_time_seconds, question_ids")
+            .select("id, subject, topic, max_time_seconds, question_ids, status, challenger_id, opponent_id, challenger_score, opponent_score")
             .eq("id", duelId)
             .maybeSingle();
 
-          if (duelData) {
-            fetchSubject = duelData.subject;
-            setQuizSubject(`Duel: ${duelData.subject}`);
-            if (duelData.max_time_seconds) {
-              const mins = Math.max(1, Math.round(duelData.max_time_seconds / 60));
-              setAssignmentDuration(mins);
-              setTimeLeft(duelData.max_time_seconds);
-            }
-            if (Array.isArray(duelData.question_ids) && duelData.question_ids.length > 0) {
-              duelQuestionIds = duelData.question_ids;
-              fetchLimit = duelData.question_ids.length;
-            }
+          if (duelErr || !duelData) {
+            toast.error("Duel challenge not found");
+            navigate("/dashboard/student/duel-of-minds");
+            return;
+          }
+
+          const isChallenger = studentRecord.id === duelData.challenger_id;
+          const isOpponent = studentRecord.id === duelData.opponent_id;
+
+          if (!isChallenger && !isOpponent) {
+            toast.error("You are not a participant in this duel");
+            navigate("/dashboard/student/duel-of-minds");
+            return;
+          }
+
+          const myScore = isChallenger ? duelData.challenger_score : duelData.opponent_score;
+
+          // Single attempt lock: if already finished or if this student already took their turn
+          if (duelData.status === "completed" || myScore !== null) {
+            toast.info("You have already completed your turn for this duel.");
+            navigate("/dashboard/student/duel-of-minds");
+            return;
+          }
+
+          if (duelData.status === "expired" || duelData.status === "declined") {
+            toast.error("This duel challenge is no longer active");
+            navigate("/dashboard/student/duel-of-minds");
+            return;
+          }
+
+          fetchSubject = duelData.subject;
+          setQuizSubject(`Duel: ${duelData.subject}`);
+          if (duelData.max_time_seconds) {
+            const mins = Math.max(1, Math.round(duelData.max_time_seconds / 60));
+            setAssignmentDuration(mins);
+            setTimeLeft(duelData.max_time_seconds);
+          }
+          if (Array.isArray(duelData.question_ids) && duelData.question_ids.length > 0) {
+            duelQuestionIds = duelData.question_ids;
+            fetchLimit = duelData.question_ids.length;
           }
         }
 
@@ -405,10 +462,12 @@ export default function QuizPage() {
             const cached = sessionStorage.getItem(cacheKey);
             if (cached) {
               const parsed = JSON.parse(cached);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                setQuestions(parsed);
-                setQuizSubject(parsed[0]?.subject || subject || "Mixed Topics");
+              if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0 && parsed.sessionId) {
+                setQuestions(parsed.questions);
+                setQuizSessionId(parsed.sessionId);
+                setQuizSubject(parsed.questions[0]?.subject || subject || "Mixed Topics");
                 setLoading(false);
+                questionStartRef.current = Date.now();
                 return;
               }
             }
@@ -449,26 +508,24 @@ export default function QuizPage() {
             ? "comprehension_passages_year6"
             : "comprehension_passages_year9";
 
-        let query = (supabase as any).from(tableName).select(`
-            *,
-            passage:${passageTableName}(title, passage_text)
-          `);
+        // IDs only — correct answers must never reach the browser.
+        let idQuery = supabase.from(tableName).select("id");
 
         if (duelQuestionIds.length > 0) {
-          query = query.in("id", duelQuestionIds);
+          idQuery = idQuery.in("id", duelQuestionIds);
         } else {
           if (fetchSubject) {
-            query = query.eq("subject", fetchSubject);
+            idQuery = idQuery.eq("subject", fetchSubject);
           }
 
           if (fetchTopics && fetchTopics.length > 0) {
-            query = query.in("topic", fetchTopics);
+            idQuery = idQuery.in("topic", fetchTopics);
           }
         }
 
         setQuizSubject(fetchSubject || "Mixed Topics");
 
-        const { data: allQuestions, error: questionsError } = await query;
+        const { data: allQuestionIds, error: questionsError } = await idQuery;
 
         if (questionsError) {
           console.error("Error fetching questions:", questionsError);
@@ -477,25 +534,74 @@ export default function QuizPage() {
           return;
         }
 
-        if (!allQuestions || allQuestions.length === 0) {
+        if (!allQuestionIds || allQuestionIds.length === 0) {
           toast.error("No questions available for this selection");
           navigate("/dashboard/student");
           return;
         }
 
-        // Randomly shuffle and select questions based on limit
-        const shuffled = [...allQuestions].sort(() => Math.random() - 0.5);
-        const questionsData = shuffled.slice(
-          0,
-          Math.min(fetchLimit, shuffled.length)
-        );
-        const questionIds = questionsData.map((q: any) => q.id);
+        // Randomly shuffle and select questions based on limit (duels use server-assigned questions)
+        let selectedIds: string[];
+        if (duelQuestionIds.length > 0) {
+          selectedIds = duelQuestionIds;
+        } else {
+          const shuffled = [...allQuestionIds].sort(() => Math.random() - 0.5);
+          selectedIds = shuffled
+            .slice(0, Math.min(fetchLimit, shuffled.length))
+            .map((q: any) => q.id);
+        }
 
-        // Fetch all options for selected questions in a single batched query
-        const { data: allOptionsData, error: optionsError } = await (supabase as any)
+        // Open a server-authoritative session. This also enforces the
+        // daily-challenge lock server-side.
+        let sessionId: string;
+        try {
+          sessionId = await startQuizSession({
+            mode: isDailyChallenge ? "daily_challenge" : isDuel ? "duel" : "practice",
+            questionIds: selectedIds,
+            subject: isDailyChallenge ? "Daily Challenge" : (fetchSubject || subject || null),
+            topic: isDailyChallenge ? "Daily Sprint" : (topic || null),
+            assignmentId: assignmentId || null,
+            arenaChallengeId: duelId || null,
+          });
+        } catch (sessionErr) {
+          if (isDailyChallengeError(sessionErr)) {
+            setDailyChallengeLocked(true);
+            const cd = getDailyChallengeCountdown();
+            setDailyChallengeCountdown(cd.formattedCountdown);
+            setLoading(false);
+            return;
+          }
+          throw sessionErr;
+        }
+        setQuizSessionId(sessionId);
+
+        // Fetch sanitized question content (no correct answers) + options
+        // without is_correct flags.
+        const { data: questionsContent, error: contentError } = await supabase
+          .from(tableName)
+          .select(`
+            id,
+            subject,
+            topic,
+            question_text,
+            explanation,
+            difficulty,
+            image_url,
+            passage:${passageTableName}(title, passage_text)
+          `)
+          .in("id", selectedIds);
+
+        if (contentError) {
+          console.error("Error fetching question content:", contentError);
+          toast.error("Failed to load questions");
+          navigate("/dashboard/student");
+          return;
+        }
+
+        const { data: allOptionsData, error: optionsError } = await supabase
           .from(optionsTableName)
-          .select("*")
-          .in("question_id", questionIds)
+          .select("id, question_id, option_text, display_order, image_url")
+          .in("question_id", selectedIds)
           .order("display_order");
 
         if (optionsError) {
@@ -513,11 +619,8 @@ export default function QuizPage() {
           {}
         );
 
-        const questionsWithOptions: Question[] = questionsData.map((q: any) => {
+        const questionsWithOptions: Question[] = (questionsContent || []).map((q: any) => {
           const optionsData = optionsByQuestion[q.id] || [];
-          const correctOptionIndex = optionsData.findIndex(
-            (opt: any) => opt.is_correct
-          );
 
           return {
             id: q.id,
@@ -526,24 +629,28 @@ export default function QuizPage() {
               text: opt.option_text,
               image_url: opt.image_url || null,
             })),
-            correctAnswer: correctOptionIndex >= 0 ? correctOptionIndex : 0,
+            // Server-graded: correctAnswer is filled in per answer from the
+            // grading RPC / completion answer key, never fetched up front.
+            correctAnswer: -1,
             explanation: q.explanation || "No explanation available.",
             subject: q.subject,
             topic: q.topic || undefined,
-            difficulty: (q.difficulty as any) || "medium",
+            difficulty: (q.difficulty as Question["difficulty"]) || "medium",
             passage: q.passage || null,
             image_url: q.image_url || null,
           };
         });
 
         setQuestions(questionsWithOptions);
+        questionStartRef.current = Date.now();
 
-        // Cache questions in sessionStorage so retakes / page reloads preserve test
+        // Cache the sanitized session (no answers present) so retakes / page
+        // reloads preserve test progress.
         if (cacheKey) {
           try {
-            sessionStorage.setItem(cacheKey, JSON.stringify(questionsWithOptions));
+            sessionStorage.setItem(cacheKey, JSON.stringify({ sessionId, questions: questionsWithOptions }));
           } catch (cacheErr) {
-            console.warn("Could not cache questions:", cacheErr);
+            console.warn("Could not cache quiz session:", cacheErr);
           }
         }
       } catch (error) {
@@ -554,7 +661,7 @@ export default function QuizPage() {
         setLoading(false);
       }
     },
-    [user, subject, topic, assignmentId, navigate, isReviewMode, isDailyChallenge, duelId, getSessionCacheKey]
+    [user, subject, topic, assignmentId, navigate, isReviewMode, isDailyChallenge, isDuel, duelId, getSessionCacheKey, clearSessionCache]
   );
 
   useEffect(() => {
@@ -581,17 +688,31 @@ export default function QuizPage() {
   }, [timeLeft, quizComplete, loading]);
 
   const handleTimeExpired = async () => {
+    // Guard against racing an in-flight submit_quiz_answer: if one is grading,
+    // retry shortly — the countdown stays at 0 so this re-fires.
+    if (gradingRef.current) {
+      setTimeout(() => {
+        if (!quizComplete) void handleTimeExpired();
+      }, 600);
+      return;
+    }
     const state = latestQuizState.current;
-    let finalAnswers = [...state.answers];
-    let finalResponses = [...state.userResponses];
+    const finalAnswers = [...state.answers];
+    const finalResponses = [...state.userResponses];
     let finalScore = state.score;
 
-    // If student selected an answer on the current question but hasn't submitted yet
-    if (state.selectedAnswer !== null && state.questions[state.currentQuestion]) {
+    // If student selected an answer on the current question but hasn't submitted yet:
+    // grade it server-side so the timeout path is also server-authoritative.
+    if (state.selectedAnswer !== null && state.questions[state.currentQuestion] && quizSessionId) {
       const q = state.questions[state.currentQuestion];
-      const isCorrect = state.selectedAnswer === q.correctAnswer;
-      if (isCorrect) finalScore += 1;
-      finalAnswers.push(isCorrect);
+      try {
+        const res = await submitQuizAnswer(quizSessionId, q.id, state.selectedAnswer, Date.now() - questionStartRef.current);
+        if (res.is_correct) finalScore += 1;
+        finalAnswers.push(res.is_correct);
+      } catch (gradeErr) {
+        console.warn("Timeout grading failed, counting as incorrect:", gradeErr);
+        finalAnswers.push(false);
+      }
       finalResponses.push(state.selectedAnswer);
     }
 
@@ -619,16 +740,45 @@ export default function QuizPage() {
     }
   };
 
-  const handleSubmitAnswer = () => {
-    if (selectedAnswer === null) return;
-
-    const isCorrect = selectedAnswer === question.correctAnswer;
-    if (isCorrect) {
-      setScore((prev) => prev + 1);
+  const handleSubmitAnswer = async () => {
+    if (selectedAnswer === null || grading) return;
+    if (!quizSessionId) {
+      toast.error("Quiz session is not active. Please restart the quiz.");
+      return;
     }
-    setAnswers((prev) => [...prev, isCorrect]);
-    setUserResponses((prev) => [...prev, selectedAnswer]);
-    setShowFeedback(true);
+
+    const question = questions[currentQuestion];
+    if (!question) return;
+
+    setGrading(true);
+    gradingRef.current = true;
+    try {
+      const timeSpentMs = Date.now() - questionStartRef.current;
+      const result = await submitQuizAnswer(quizSessionId, question.id, selectedAnswer, timeSpentMs);
+
+      // Update the local question with the server-provided answer key so the
+      // review snapshot can be built without answers ever being pre-fetched.
+      setQuestions((prev) =>
+        prev.map((q, idx) =>
+          idx === currentQuestion
+            ? { ...q, correctAnswer: result.correct_index ?? -1 }
+            : q
+        )
+      );
+
+      if (result.is_correct) {
+        setScore((prev) => prev + 1);
+      }
+      setAnswers((prev) => [...prev, result.is_correct]);
+      setUserResponses((prev) => [...prev, selectedAnswer]);
+      setShowFeedback(true);
+    } catch (err) {
+      console.error("Error submitting answer:", err);
+      toast.error("Could not save your answer. Please try again.");
+    } finally {
+      setGrading(false);
+      gradingRef.current = false;
+    }
   };
 
   const handleNext = () => {
@@ -636,6 +786,7 @@ export default function QuizPage() {
       setCurrentQuestion(currentQuestion + 1);
       setSelectedAnswer(null);
       setShowFeedback(false);
+      questionStartRef.current = Date.now();
     } else {
       saveQuizResults();
       setQuizComplete(true);
@@ -648,180 +799,129 @@ export default function QuizPage() {
     overrideResponses?: (number | null)[]
   ) => {
     if (!user) return;
+    if (!quizSessionId) {
+      console.error("No active quiz session");
+      return;
+    }
 
     const finalAnswers = overrideAnswers || answers;
     const finalResponses = overrideResponses || userResponses;
-    const calculatedCorrect = finalAnswers.filter(Boolean).length;
-    const finalScore = overrideScore !== undefined ? overrideScore : calculatedCorrect;
+    const finalScore = overrideScore !== undefined ? overrideScore : finalAnswers.filter(Boolean).length; const percentage = questions.length > 0 ? Math.round((finalScore / questions.length) * 100) : 0;
 
     try {
-      // Get student ID
-      const { data: studentData } = await supabase
-        .from("students")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (!studentData?.id) {
-        console.error("Student ID not found");
-        return;
-      }
-
-      const percentage = questions.length > 0 ? Math.round((finalScore / questions.length) * 100) : 0;
-
-      // Insert quiz result
-      const { data: newQuizResult, error } = await supabase
-        .from("quiz_results")
-        .insert({
-          student_id: studentData.id,
-          subject: isDailyChallenge ? "Daily Challenge" : (quizSubject || subject || "Mixed Topics"),
-          score: percentage,
-          total_questions: questions.length,
-          correct_answers: finalScore,
-        })
-        .select("id")
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error saving quiz result:", error);
-        toast.error("Failed to save quiz results");
-      } else {
-        // Record and calculate Gamification Points (EP), Mastery, Streak, and Badges
-        try {
-          const sessionQuestionsInput = questions.map((q, idx) => ({
-            questionId: q.id,
-            difficulty: q.difficulty || "medium",
-            isCorrect: finalAnswers[idx] || false,
-            timeSpentSeconds: 30,
-            expectedTimeSeconds: 60,
-            isFocusArea: false,
-          }));
-
-          const outcome = await recordSessionGamification({
-            studentId: studentData.id,
-            quizResultId: newQuizResult?.id,
-            subject: isDailyChallenge ? "Daily Challenge" : (quizSubject || subject || "Mixed Topics"),
-            topic: isDailyChallenge ? "Daily Sprint" : (topic || questions[0]?.topic || "General"),
-            questions: sessionQuestionsInput,
-            isDailyChallenge,
-          });
-
-          setGamificationOutcome(outcome);
-          if (outcome.unlockedBadges && outcome.unlockedBadges.length > 0) {
-            setUnlockedBadges(outcome.unlockedBadges);
-            setBadgeModalOpen(true);
-          }
-
-          if (isDailyChallenge) {
-            clearSessionCache();
-            const cd = getDailyChallengeCountdown();
-            setDailyChallengeCountdown(cd.formattedCountdown);
-          }
-        } catch (gameErr) {
-          console.error("Error updating gamification profile:", gameErr);
-        }
-
-        // If Head-to-Head Duel, submit turn to Arena Service
-        if (duelId && studentData?.id) {
-          try {
-            const timeTaken = assignmentDuration ? Math.max(5, assignmentDuration * 60 - (timeLeft || 0)) : 45;
-            const res = await submitDuelTurn({
-              challengeId: duelId,
-              studentId: studentData.id,
-              score: finalScore,
-              timeTakenSeconds: timeTaken,
-            });
-            setDuelOutcome(res);
-          } catch (dErr) {
-            console.warn("Error submitting duel turn:", dErr);
-          }
-        }
-        // If it was an assignment, update assignment status and store questions_snapshot
-        if (assignmentId) {
-          const questionsSnapshot = {
-            questions: questions.map((q, idx) => ({
-              id: q.id,
-              question_number: idx + 1,
-              original_order: idx + 1,
-              question: q.question,
-              options: q.options,
-              correctAnswer: q.correctAnswer,
-              userResponse: finalResponses[idx] !== undefined ? finalResponses[idx] : null,
-              isCorrect: finalAnswers[idx] !== undefined ? finalAnswers[idx] : false,
-              explanation: q.explanation,
-              subject: q.subject,
-              image_url: q.image_url || null,
-              passage: q.passage || null,
-            })),
-            userResponses: finalResponses,
-            answers: finalAnswers,
-            score: percentage,
-            totalQuestions: questions.length,
-            durationMinutes: assignmentDuration,
-            completedAt: new Date().toISOString(),
+      // Server-authoritative completion: the edge function grades the recorded
+      // answers, writes quiz_results, runs the EP/mastery/streak/badge
+      // pipeline and updates the league cohort. The client no longer computes
+      // or writes any gamification data.
+      const answerKey: Record<string, { is_correct: boolean; correct_index: number | null }> = {};
+      try {
+        const outcome = await completeQuizSession(quizSessionId);
+        for (const entry of outcome.questionAnswerKey ?? []) {
+          answerKey[entry.question_id] = {
+            is_correct: entry.is_correct,
+            correct_index: entry.correct_index,
           };
-
-          await supabase
-            .from("practice_assignments")
-            .update({
-              status: "completed",
-              score: percentage,
-              completed_at: new Date().toISOString(),
-              questions_snapshot: questionsSnapshot as unknown as Json,
-            })
-            .eq("id", assignmentId);
-
-          try {
-            const { data: assignmentData } = await supabase
-              .from("practice_assignments")
-              .select("parent_id, subject")
-              .eq("id", assignmentId)
-              .single();
-
-            if (assignmentData) {
-              const { data: parentData } = await supabase
-                .from("parents")
-                .select("user_id")
-                .eq("id", assignmentData.parent_id)
-                .single();
-
-              const { data: profileData } = await supabase
-                .from("profiles")
-                .select("full_name")
-                .eq("id", user.id)
-                .single();
-
-              const studentName = profileData?.full_name || "Your child";
-
-              if (parentData?.user_id) {
-                await supabase.from("notifications").insert({
-                  user_id: parentData.user_id,
-                  title: "Assignment Completed",
-                  message: `${studentName} completed the assigned ${assignmentData.subject} practice task with a score of ${percentage}%.`,
-                  type: "assignment_completed",
-                  read: false,
-                  metadata: {
-                    assignment_id: assignmentId,
-                    student_id: studentData.id,
-                    score: percentage,
-                  },
-                });
-              }
-            }
-          } catch (notifErr) {
-            console.error("Error creating assignment completion notification:", notifErr);
-          }
         }
-        toast.success("Quiz results saved! 🎉");
+        // Reflect the server-provided answer key in the local questions so the
+        // review snapshot is complete even for unanswered questions.
+        setQuestions((prev) =>
+          prev.map((q) =>
+            answerKey[q.id]
+              ? { ...q, correctAnswer: answerKey[q.id].correct_index ?? -1 }
+              : q
+          )
+        );
+
+        setGamificationOutcome(outcome);
+        if (outcome.unlockedBadges && outcome.unlockedBadges.length > 0) {
+          setUnlockedBadges(outcome.unlockedBadges);
+          setBadgeModalOpen(true);
+        }
+
+        if (isDailyChallenge) {
+          clearSessionCache();
+          const cd = getDailyChallengeCountdown();
+          setDailyChallengeCountdown(cd.formattedCountdown);
+        }
+      } catch (gameErr) {
+        console.error("Error completing quiz session:", gameErr);
+        toast.error("Your session was saved but scoring failed. Please contact support if points are missing.");
       }
+
+      // If Head-to-Head Duel, submit turn to the arena (server-resolved from
+      // this session's recorded answers)
+      if (duelId && quizSessionId) {
+        try {
+          const res = await submitDuelTurn({
+            challengeId: duelId,
+            sessionId: quizSessionId,
+          });
+          setDuelOutcome(res);
+        } catch (dErr) {
+          console.warn("Error submitting duel turn:", dErr);
+        }
+      }
+
+      // If it was an assignment, store the review snapshot. Status/score/
+      // completion are written server-side; the snapshot is display data.
+      if (assignmentId) {
+        const questionsSnapshot = {
+          questions: questions.map((q, idx) => ({
+            id: q.id,
+            question_number: idx + 1,
+            original_order: idx + 1,
+            question: q.question,
+            options: q.options,
+            correctAnswer: answerKey[q.id]?.correct_index ?? q.correctAnswer,
+            userResponse: finalResponses[idx] !== undefined ? finalResponses[idx] : null,
+            isCorrect: finalAnswers[idx] !== undefined ? finalAnswers[idx] : false,
+            explanation: q.explanation,
+            subject: q.subject,
+            image_url: q.image_url || null,
+            passage: q.passage || null,
+          })),
+          userResponses: finalResponses,
+          answers: finalAnswers,
+          score: percentage,
+          totalQuestions: questions.length,
+          durationMinutes: assignmentDuration,
+          completedAt: new Date().toISOString(),
+        };
+
+        await supabase
+          .from("practice_assignments")
+          .update({
+            questions_snapshot: questionsSnapshot as unknown as Database["public"]["Tables"]["practice_assignments"]["Insert"]["questions_snapshot"],
+          })
+          .eq("id", assignmentId);
+      }
+
+      clearSessionCache();
+      toast.success("Quiz results saved! 🎉");
     } catch (error) {
       console.error("Error:", error);
     }
   };
 
-  const handleRetrySameQuestions = () => {
-    if (isDailyChallenge) {
-      toast.error("Daily Challenge can only be completed once per day.");
+  const handleRetrySameQuestions = async () => {
+    if (isDailyChallenge || isDuel) {
+      toast.error(isDuel ? "Arena duels cannot be retaken." : "Daily Challenge can only be completed once per day.");
+      return;
+    }
+    // Retry replays the same questions in a NEW server session so scoring
+    // stays server-authoritative.
+    try {
+      const newSessionId = await startQuizSession({
+        mode: "practice",
+        questionIds: questions.map((q) => q.id),
+        subject: quizSubject || subject || null,
+        topic: topic || null,
+        assignmentId: assignmentId || null,
+      });
+      setQuizSessionId(newSessionId);
+    } catch (err) {
+      console.error("Could not restart quiz session:", err);
+      toast.error("Could not restart the quiz. Please try again.");
       return;
     }
     setCurrentQuestion(0);
@@ -831,15 +931,20 @@ export default function QuizPage() {
     setQuizComplete(false);
     setAnswers([]);
     setUserResponses([]);
+    questionStartRef.current = Date.now();
     if (assignmentDuration) {
       setTimeLeft(assignmentDuration * 60);
     }
   };
 
   const handlePracticeNewQuestions = () => {
-    if (isDailyChallenge) {
-      toast.error("Daily Challenge can only be completed once per day.");
+    if (isDailyChallenge || isDuel) {
+      toast.error(isDuel ? "Arena duels cannot be retaken." : "Daily Challenge can only be completed once per day.");
       return;
+    }
+    // The old session is orphaned by the cache clear — mark it abandoned.
+    if (quizSessionId && !quizComplete) {
+      void abandonQuizSessionServer(quizSessionId);
     }
     clearSessionCache();
     setCurrentQuestion(0);
@@ -853,9 +958,72 @@ export default function QuizPage() {
   };
 
   const handleBackToDashboard = () => {
+    // Cache clear already disables resume; abandon the server session too so
+    // quitting mid-quiz doesn't leave it "in progress" forever.
+    if (quizSessionId && !quizComplete && !isReviewMode) {
+      void abandonQuizSessionServer(quizSessionId);
+    }
     clearSessionCache();
     navigate("/dashboard/student");
   };
+
+  // Shared flag dialog — previously duplicated in both render branches.
+  const flagDialog = (
+    <Dialog open={flagDialogOpen} onOpenChange={setFlagDialogOpen}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Flag className="h-5 w-5 text-destructive" />
+            Flag this Question
+          </DialogTitle>
+          <DialogDescription>
+            Let us know what is wrong with this question. Our administrators will review it.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="flag-reason">Reason</Label>
+            <Select value={flagReason} onValueChange={setFlagReason}>
+              <SelectTrigger id="flag-reason">
+                <SelectValue placeholder="Select a reason" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="incorrect_answer">Incorrect Correct Option</SelectItem>
+                <SelectItem value="typo">Spelling or Formatting Issue</SelectItem>
+                <SelectItem value="missing_image">Image Failed to Load / Wrong Image</SelectItem>
+                <SelectItem value="incomplete">Question or Options Truncated</SelectItem>
+                <SelectItem value="other">Other Issue</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="flag-details">Additional Details (Optional)</Label>
+            <Textarea
+              id="flag-details"
+              placeholder="Explain the issue in detail..."
+              value={flagDetails}
+              onChange={(e) => setFlagDetails(e.target.value)}
+              maxLength={500}
+              className="min-h-[100px]"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setFlagDialogOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={handleFlagQuestion}
+            disabled={submittingFlag || !flagReason}
+          >
+            {submittingFlag && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Submit Report
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 
   if (loading) {
     return (
@@ -945,9 +1113,8 @@ export default function QuizPage() {
         <Card className="w-full max-w-2xl p-6 sm:p-8 text-center animate-scale-in shadow-xl border-border/80">
           <div className="mb-6">
             <Trophy
-              className={`w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-3 ${
-                isPassed ? "text-primary" : "text-muted-foreground"
-              }`}
+              className={`w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-3 ${isPassed ? "text-primary" : "text-muted-foreground"
+                }`}
             />
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-1">
               Quiz Complete! 🎉
@@ -985,31 +1152,53 @@ export default function QuizPage() {
 
           {/* Head-to-Head Arena Result Banner */}
           {duelOutcome && (
-            <div className="mb-6 p-5 rounded-xl border border-purple-500/40 bg-gradient-to-r from-purple-500/20 via-[#18112c] to-[#0e192b] text-left">
+            <div className="mb-6 p-5 rounded-xl border border-purple-500/40 bg-gradient-to-r from-purple-500/15 via-purple-500/5 to-transparent text-left">
               <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center border border-purple-500/40">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-500 flex items-center justify-center border border-purple-500/40">
                   <Swords className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">
+                  <h3 className="text-base font-black">
                     {duelOutcome.isMatchComplete && duelOutcome.matchResult
                       ? duelOutcome.matchResult.outcome === "win"
                         ? "Arena Victory! 🏆"
                         : duelOutcome.matchResult.outcome === "draw"
-                        ? "Arena Battle Tie! 🤝"
-                        : "Arena Battle Concluded 🛡️"
+                          ? "Arena Battle Tie! 🤝"
+                          : "Arena Battle Concluded 🛡️"
                       : "Duel Round Recorded! ⚡"}
                   </h3>
-                  <p className="text-xs text-slate-300">
+                  <p className="text-xs text-muted-foreground">
                     {duelOutcome.isMatchComplete && duelOutcome.matchResult
-                      ? duelOutcome.matchResult.isUpset
-                        ? `Upset Victory! You took down a higher-ranked opponent and claimed +${duelOutcome.matchResult.totalEP} EP!`
-                        : `Battle completed! You earned +${duelOutcome.matchResult.totalEP} EP in the Head-to-Head Arena.`
+                      ? duelOutcome.matchResult.cappedByCollusion
+                        ? "Daily duel limit with this opponent reached — the match counts, but today's rematches award no EP."
+                        : duelOutcome.matchResult.isUpset
+                          ? `Upset Victory! You took down a higher-ranked opponent and claimed +${duelOutcome.matchResult.totalEP} EP!`
+                          : `Battle completed! You earned +${duelOutcome.matchResult.totalEP} EP in the Head-to-Head Arena.`
                       : "Your score and completion time are locked in. Awaiting your opponent's round in the Arena Hub."}
                   </p>
+                  {duelOutcome.matchResult && duelOutcome.matchResult.streakBonusEP > 0 && (
+                    <p className="text-xs font-bold text-amber-500 mt-0.5">
+                      🔥 {duelOutcome.matchResult.newWinStreak} duels in a row — keep it burning!
+                    </p>
+                  )}
                 </div>
               </div>
-              <div className="pt-2">
+              {duelOutcome.isMatchComplete &&
+                duelOutcome.matchResult &&
+                duelOutcome.matchResult.breakdown.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {duelOutcome.matchResult.breakdown.map((item, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between text-xs bg-background/50 rounded-lg px-3 py-1.5 border border-border/40"
+                      >
+                        <span className="font-medium">{item.label}</span>
+                        <span className="font-black text-amber-500">+{item.amount} EP</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              <div className="pt-3">
                 <Button
                   size="sm"
                   onClick={() => navigate("/dashboard/student/duel-of-minds")}
@@ -1049,20 +1238,18 @@ export default function QuizPage() {
                     setSnapshotInitialIndex(index);
                     setSnapshotDialogOpen(true);
                   }}
-                  className={`group relative aspect-square rounded-xl flex flex-col items-center justify-center gap-1 border-2 transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
-                    correct
+                  className={`group relative aspect-square rounded-xl flex flex-col items-center justify-center gap-1 border-2 transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${correct
                       ? "bg-emerald-50 hover:bg-emerald-100/90 border-emerald-300 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/60 dark:border-emerald-800"
                       : "bg-rose-50 hover:bg-rose-100/90 border-rose-300 dark:bg-rose-950/30 dark:hover:bg-rose-950/60 dark:border-rose-800"
-                  }`}
+                    }`}
                   aria-label={`View Question ${index + 1} snapshot (${correct ? "Correct" : "Incorrect"})`}
                   title={`Click to review Question ${index + 1}`}
                 >
                   <span
-                    className={`text-[11px] sm:text-xs font-black ${
-                      correct
+                    className={`text-[11px] sm:text-xs font-black ${correct
                         ? "text-emerald-700 dark:text-emerald-300"
                         : "text-rose-700 dark:text-rose-300"
-                    }`}
+                      }`}
                   >
                     Q{index + 1}
                   </span>
@@ -1111,7 +1298,7 @@ export default function QuizPage() {
                 <Button
                   onClick={() => {
                     clearSessionCache();
-                    navigate("/dashboard/student/arena");
+                    navigate("/dashboard/student/duel-of-minds");
                   }}
                   variant="outline"
                   className="w-full gap-2 font-bold h-11 border-purple-500/40 text-purple-300 hover:bg-purple-950/30"
@@ -1122,6 +1309,30 @@ export default function QuizPage() {
                 </Button>
               </div>
 
+              <Button
+                onClick={handleBackToDashboard}
+                variant="ghost"
+                className="w-full font-semibold h-11"
+                size="lg"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Dashboard
+              </Button>
+            </div>
+          ) : isDuel ? (
+            <div className="space-y-3">
+              <Button
+                onClick={() => {
+                  clearSessionCache();
+                  navigate("/dashboard/student/duel-of-minds");
+                }}
+                variant="default"
+                className="w-full gap-2 font-bold text-base h-12 shadow-md bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white"
+                size="lg"
+              >
+                <Swords className="w-5 h-5" />
+                Return to Duel of Minds
+              </Button>
               <Button
                 onClick={handleBackToDashboard}
                 variant="ghost"
@@ -1187,61 +1398,8 @@ export default function QuizPage() {
           onClose={() => setBadgeModalOpen(false)}
         />
 
-        {/* Flag Question Dialog */}
-        <Dialog open={flagDialogOpen} onOpenChange={setFlagDialogOpen}>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Flag className="h-5 w-5 text-destructive" />
-                Flag this Question
-              </DialogTitle>
-              <DialogDescription>
-                Let us know what is wrong with this question. Our administrators will review it.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="flag-reason">Reason</Label>
-                <Select value={flagReason} onValueChange={setFlagReason}>
-                  <SelectTrigger id="flag-reason">
-                    <SelectValue placeholder="Select a reason" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="incorrect_answer">Incorrect Correct Option</SelectItem>
-                    <SelectItem value="typo">Spelling or Formatting Issue</SelectItem>
-                    <SelectItem value="missing_image">Image Failed to Load / Wrong Image</SelectItem>
-                    <SelectItem value="incomplete">Question or Options Truncated</SelectItem>
-                    <SelectItem value="other">Other Issue</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="flag-details">Additional Details (Optional)</Label>
-                <Textarea
-                  id="flag-details"
-                  placeholder="Explain the issue in detail..."
-                  value={flagDetails}
-                  onChange={(e) => setFlagDetails(e.target.value)}
-                  maxLength={500}
-                  className="min-h-[100px]"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setFlagDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={handleFlagQuestion}
-                disabled={submittingFlag || !flagReason}
-              >
-                {submittingFlag && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Submit Report
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {/* Flag Question Dialog (shared) */}
+        {flagDialog}
       </div>
     );
   }
@@ -1274,16 +1432,14 @@ export default function QuizPage() {
                   size="sm"
                   onClick={() => handleOpenFlagDialog(question)}
                   disabled={flaggedQuestionIds.includes(question.id)}
-                  className={`h-7 px-2.5 text-xs flex items-center gap-1.5 font-semibold transition-all border rounded-full ${
-                    flaggedQuestionIds.includes(question.id)
+                  className={`h-7 px-2.5 text-xs flex items-center gap-1.5 font-semibold transition-all border rounded-full ${flaggedQuestionIds.includes(question.id)
                       ? "text-green-600 bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900/30"
                       : "text-red-600 bg-red-50 hover:bg-red-100 border-red-200 dark:text-red-400 dark:bg-red-950/20 dark:hover:bg-red-950/40 dark:border-red-900/30"
-                  }`}
+                    }`}
                 >
                   <Flag
-                    className={`h-3 w-3 ${
-                      flaggedQuestionIds.includes(question.id) ? "" : "fill-current"
-                    }`}
+                    className={`h-3 w-3 ${flaggedQuestionIds.includes(question.id) ? "" : "fill-current"
+                      }`}
                   />
                   {flaggedQuestionIds.includes(question.id) ? "Flagged" : "Flag"}
                 </Button>
@@ -1294,13 +1450,12 @@ export default function QuizPage() {
               {/* Active Assignment Countdown Timer */}
               {assignmentDuration && timeLeft !== null && (
                 <div
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border transition-all ${
-                    timeLeft < 120
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border transition-all ${timeLeft < 120
                       ? "bg-rose-50 text-rose-600 border-rose-300 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800 animate-pulse"
                       : timeLeft < 300
-                      ? "bg-amber-50 text-amber-600 border-amber-300 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800"
-                      : "bg-primary/10 text-primary border-primary/20"
-                  }`}
+                        ? "bg-amber-50 text-amber-600 border-amber-300 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800"
+                        : "bg-primary/10 text-primary border-primary/20"
+                    }`}
                   title={`Parent assigned time limit: ${assignmentDuration} minutes`}
                 >
                   <Clock className="w-3.5 h-3.5 shrink-0" />
@@ -1362,15 +1517,14 @@ export default function QuizPage() {
                   key={index}
                   onClick={() => handleAnswerSelect(index)}
                   disabled={showFeedback}
-                  className={`w-full p-4 text-left rounded-lg border-2 transition-all ${
-                    showCorrect
+                  className={`w-full p-4 text-left rounded-lg border-2 transition-all ${showCorrect
                       ? "border-green-500 bg-green-50 dark:bg-green-900/20"
                       : showIncorrect
-                      ? "border-red-500 bg-red-50 dark:bg-red-900/20"
-                      : isSelected
-                      ? "border-primary bg-primary/10"
-                      : "border-border hover:border-primary/50 hover:bg-muted/50"
-                  } ${showFeedback ? "cursor-not-allowed" : "cursor-pointer"}`}
+                        ? "border-red-500 bg-red-50 dark:bg-red-900/20"
+                        : isSelected
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/50 hover:bg-muted/50"
+                    } ${showFeedback ? "cursor-not-allowed" : "cursor-pointer"}`}
                 >
                   <div className="flex flex-col gap-3">
                     {option.image_url && (
@@ -1400,11 +1554,10 @@ export default function QuizPage() {
 
           {showFeedback && question && (
             <div
-              className={`p-4 rounded-lg mb-6 animate-fade-in ${
-                selectedAnswer === question.correctAnswer
+              className={`p-4 rounded-lg mb-6 animate-fade-in ${selectedAnswer === question.correctAnswer
                   ? "bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-800"
                   : "bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800"
-              }`}
+                }`}
             >
               <div className="flex items-start gap-3">
                 {selectedAnswer === question.correctAnswer ? (
@@ -1428,11 +1581,17 @@ export default function QuizPage() {
             {!showFeedback ? (
               <Button
                 onClick={handleSubmitAnswer}
-                disabled={selectedAnswer === null}
+                disabled={selectedAnswer === null || grading}
                 className="w-full"
                 size="lg"
               >
-                Submit Answer
+                {grading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking…
+                  </>
+                ) : (
+                  "Submit Answer"
+                )}
               </Button>
             ) : (
               <Button onClick={handleNext} className="w-full" size="lg">
@@ -1461,61 +1620,8 @@ export default function QuizPage() {
         </Card>
       </div>
 
-      {/* Flag Question Dialog */}
-      <Dialog open={flagDialogOpen} onOpenChange={setFlagDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Flag className="h-5 w-5 text-destructive" />
-              Flag this Question
-            </DialogTitle>
-            <DialogDescription>
-              Let us know what is wrong with this question. Our administrators will review it.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="flag-reason">Reason</Label>
-              <Select value={flagReason} onValueChange={setFlagReason}>
-                <SelectTrigger id="flag-reason">
-                  <SelectValue placeholder="Select a reason" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="incorrect_answer">Incorrect Correct Option</SelectItem>
-                  <SelectItem value="typo">Spelling or Formatting Issue</SelectItem>
-                  <SelectItem value="missing_image">Image Failed to Load / Wrong Image</SelectItem>
-                  <SelectItem value="incomplete">Question or Options Truncated</SelectItem>
-                  <SelectItem value="other">Other Issue</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="flag-details">Additional Details (Optional)</Label>
-              <Textarea
-                id="flag-details"
-                placeholder="Explain the issue in detail..."
-                value={flagDetails}
-                onChange={(e) => setFlagDetails(e.target.value)}
-                maxLength={500}
-                className="min-h-[100px]"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setFlagDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleFlagQuestion}
-              disabled={submittingFlag || !flagReason}
-            >
-              {submittingFlag && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Submit Report
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Flag Question Dialog (shared) */}
+      {flagDialog}
 
       {/* Lightbox Overlay */}
       {lightboxImage && (

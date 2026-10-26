@@ -1,4 +1,4 @@
-import { FunctionsHttpError } from "@supabase/supabase-js";
+﻿import { FunctionsHttpError } from "@supabase/supabase-js";
 
 /**
  * Extracts the real error message from a Supabase Edge Function error.
@@ -20,6 +20,17 @@ export async function getEdgeFunctionError(error: unknown, fallback: string): Pr
     }
   }
   if (error instanceof Error) {
+    return error.message;
+  }
+  return fallback;
+}
+
+/**
+ * Synchronous counterpart for RPC/DB errors: supabase.rpc() rejects with a
+ * PostgREST error whose `message` carries the database exception text.
+ */
+export function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
     return error.message;
   }
   return fallback;

@@ -56,11 +56,12 @@ serve(async (req) => {
 
     if (!parentRecord && !schoolRecord) return json({ error: "Only parents or schools can create student accounts" }, 403);
 
-    const { fullName, classYear, username, password } = await req.json();
+    const { fullName, classYear, username, password, classId } = await req.json();
     const cleanFullName = typeof fullName === "string" ? fullName.trim() : "";
     const cleanClassYear = typeof classYear === "string" ? classYear.trim() : "";
     const normalizedUsername = typeof username === "string" ? username.trim().toLowerCase() : "";
     const cleanPassword = typeof password === "string" ? password : "";
+    const cleanClassId = typeof classId === "string" && classId.trim().length > 0 ? classId.trim() : null;
 
     if (!cleanFullName || !cleanClassYear || !normalizedUsername || !cleanPassword) {
       return json({ error: "Missing required fields" }, 400);
@@ -82,6 +83,27 @@ serve(async (req) => {
 
     if (cleanPassword.length < 6 || cleanPassword.length > 100) {
       return json({ error: "Password must be between 6 and 100 characters" }, 400);
+    }
+
+    // classId is client-supplied and the service-role insert below bypasses
+    // RLS, so ownership is verified here: only schools may assign a class, and
+    // only one of their own.
+    if (cleanClassId) {
+      if (!schoolRecord) {
+        return json({ error: "Only schools can assign students to classes" }, 403);
+      }
+      const { data: classRecord, error: classError } = await adminClient
+        .from("school_classes")
+        .select("id")
+        .eq("id", cleanClassId)
+        .eq("school_id", schoolRecord.id)
+        .maybeSingle();
+      if (classError) {
+        throw classError;
+      }
+      if (!classRecord) {
+        return json({ error: "Class not found in your school" }, 400);
+      }
     }
 
     const { data: existingProfile, error: usernameError } = await adminClient
@@ -159,6 +181,7 @@ serve(async (req) => {
         parent_id: parentRecord?.id || null,
         school_id: schoolRecord?.id || null,
         class_year: cleanClassYear,
+        class_id: cleanClassId,
         onboarding_completed: true,
         is_premium: false,
       })
@@ -168,7 +191,7 @@ serve(async (req) => {
     if (studentError) {
       await rollbackUser();
       console.error("create-student-account student insert error:", studentError);
-      return json({ error: "Failed to link student to parent" }, 500);
+      return json({ error: "Failed to link student to parent or school" }, 500);
     }
 
     return json({
@@ -179,6 +202,7 @@ serve(async (req) => {
         full_name: cleanFullName,
         class_year: cleanClassYear,
         username: normalizedUsername,
+        class_id: cleanClassId,
       },
     });
   } catch (error) {

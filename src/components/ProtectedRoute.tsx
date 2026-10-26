@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 /**
  * ProtectedRoute Component - Client-Side Route Protection
@@ -41,13 +42,20 @@ import { Loader2 } from "lucide-react";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole?: "student" | "parent" | "school" | "admin";
+  requiredRole?: "student" | "parent" | "school" | "admin" | "teacher";
 }
 
 export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) => {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
   const navigate = useNavigate();
+
+  // useNavigate returns a new identity on every location change in React
+  // Router v6; depending on it would re-run the auth check (and the
+  // full-screen gate) on every navigation. Navigate targets here are all
+  // absolute paths, so a ref keeps the persistent listener correct.
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   useEffect(() => {
     checkAuthStatus();
@@ -60,20 +68,21 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
           setIsChecking(false);
           const pathname = window.location.pathname;
           if (pathname.includes("/parent")) {
-            navigate("/parent-login");
+            navigateRef.current("/parent-login");
           } else if (pathname.includes("/school")) {
-            navigate("/school-login");
+            navigateRef.current("/school-login");
           } else if (pathname.includes("/admin")) {
-            navigate("/admin/login");
+            navigateRef.current("/admin/login");
           } else {
-            navigate("/student-login");
+            navigateRef.current("/student-login");
           }
         }
       }
     );
 
     return () => subscription?.unsubscribe();
-  }, [navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requiredRole]);
 
   const checkAuthStatus = async () => {
     try {
@@ -82,26 +91,36 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
       if (!session?.user) {
         const pathname = window.location.pathname;
         if (pathname.includes("/parent")) {
-          navigate("/parent-login");
+          navigateRef.current("/parent-login");
         } else if (pathname.includes("/school")) {
-          navigate("/school-login");
+          navigateRef.current("/school-login");
         } else if (pathname.includes("/admin")) {
-          navigate("/admin/login");
+          navigateRef.current("/admin/login");
         } else {
-          navigate("/student-login");
+          navigateRef.current("/student-login");
         }
         setIsAuthorized(false);
         return;
       }
 
-      // Check if email is verified
-      if (!session.user.email_confirmed_at) {
+      // Email verification is enforced app-side via the Resend code flow: the
+      // profile flag starts false at signup and is flipped by verify-email-code,
+      // the OAuth callback, or the provisioning functions. The auth-level
+      // email_confirmed_at can no longer gate this — with the built-in
+      // confirmation email disabled it is set at signup.
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("email_verified")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      if (profileData?.email_verified === false) {
         const verifyParams = new URLSearchParams({
           email: session.user.email || '',
           user_id: session.user.id,
           ...(requiredRole ? { role: requiredRole } : {}),
         });
-        navigate(`/verify-email?${verifyParams.toString()}`);
+        navigateRef.current(`/verify-email?${verifyParams.toString()}`);
         return;
       }
 
@@ -133,22 +152,56 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
             .maybeSingle();
 
           if (!userRole) {
-            navigate("/auth/login/role-selection");
+            navigateRef.current("/auth/login/role-selection");
             return;
           }
 
           // If they have a role but it's not the required one, route to their dashboard
           if (userRole.role !== requiredRole) {
-            if (userRole.role === "student") navigate("/dashboard/student");
-            else if (userRole.role === "parent") navigate("/dashboard/parent");
-            else if (userRole.role === "school") navigate("/dashboard/school");
-            else if (userRole.role === "admin") navigate("/admin");
-            else navigate("/auth/login/role-selection");
+            if (userRole.role === "student") navigateRef.current("/dashboard/student");
+            else if (userRole.role === "parent") navigateRef.current("/dashboard/parent");
+            else if (userRole.role === "school") navigateRef.current("/dashboard/school");
+            else if (userRole.role === "teacher") navigateRef.current("/dashboard/teacher");
+            else if (userRole.role === "admin") navigateRef.current("/admin");
+            else navigateRef.current("/auth/login/role-selection");
             return;
           }
 
           // Role now matches required
           roleData = userRole;
+        }
+
+        // Teacher gate: the account must be linked to a school_teachers row.
+        if (requiredRole === "teacher") {
+          const { data: teacherRow } = await supabase
+            .from("school_teachers")
+            .select("id")
+            .eq("user_id", session.user.id)
+            .maybeSingle();
+
+          if (!teacherRow) {
+            toast.error("This account is not linked to a teacher record. Contact your school administrator.");
+            await supabase.auth.signOut();
+            navigateRef.current("/teacher-login");
+            return;
+          }
+        }
+
+        // School onboarding gate: the school must complete its profile (school
+        // name) before dashboard access. Gmail signups are routed to onboarding
+        // by the auth callback; anyone skipping it is sent back. Password-path
+        // schools provision with a name and pass straight through.
+        if (requiredRole === "school") {
+          const { data: schoolProfile } = await supabase
+            .from("schools")
+            .select("school_name")
+            .eq("user_id", session.user.id)
+            .maybeSingle();
+
+          if (schoolProfile && !schoolProfile.school_name) {
+            navigateRef.current("/onboarding/school");
+            return;
+          }
         }
 
         // Students are provisioned by parents, so they should already have a student record.
@@ -160,7 +213,7 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
             .maybeSingle();
 
           if (!studentData) {
-            navigate("/student-login");
+            navigateRef.current("/student-login");
             return;
           }
         }
@@ -171,13 +224,13 @@ export const ProtectedRoute = ({ children, requiredRole }: ProtectedRouteProps) 
       console.error("Auth check error:", error);
       const pathname = window.location.pathname;
       if (pathname.includes("/parent")) {
-        navigate("/parent-login");
+        navigateRef.current("/parent-login");
       } else if (pathname.includes("/school")) {
-        navigate("/school-login");
+        navigateRef.current("/school-login");
       } else if (pathname.includes("/admin")) {
-        navigate("/admin/login");
+        navigateRef.current("/admin/login");
       } else {
-        navigate("/student-login");
+        navigateRef.current("/student-login");
       }
     } finally {
       setIsChecking(false);

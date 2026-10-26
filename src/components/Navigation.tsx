@@ -60,12 +60,6 @@ export const Navigation = ({ onLoginClick, onGetStartedClick }: NavigationProps)
               Features
             </button>
             <button
-              onClick={() => handleNavClick("/pricing", "pricing")}
-              className="text-slate-300 hover:text-[#3bc2f3] transition-all duration-200 font-semibold text-sm xl:text-base tracking-tight hover:scale-105"
-            >
-              Pricing
-            </button>
-            <button
               onClick={() => handleNavClick("/leaderboard", "leaderboard")}
               className="text-slate-300 hover:text-[#3bc2f3] transition-all duration-200 font-semibold text-sm xl:text-base tracking-tight hover:scale-105"
             >
@@ -118,12 +112,6 @@ export const Navigation = ({ onLoginClick, onGetStartedClick }: NavigationProps)
               className="block w-full text-left px-4 py-3 text-slate-200 hover:text-[#3bc2f3] hover:bg-[#15273f] rounded-xl transition-all duration-200 font-semibold text-sm"
             >
               Features
-            </button>
-            <button
-              onClick={() => handleNavClick("/pricing", "pricing")}
-              className="block w-full text-left px-4 py-3 text-slate-200 hover:text-[#3bc2f3] hover:bg-[#15273f] rounded-xl transition-all duration-200 font-semibold text-sm"
-            >
-              Pricing
             </button>
             <button
               onClick={() => handleNavClick("/leaderboard", "leaderboard")}

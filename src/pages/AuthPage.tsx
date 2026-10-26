@@ -102,6 +102,14 @@ export default function AuthPage({ roleOverride }: { roleOverride?: AuthRole }) 
         return;
       }
 
+      // With Supabase's "Confirm email" toggle off, signUp returns an active
+      // session. The intended flow is "verify the emailed code, then sign in",
+      // so drop the session now — otherwise the login page would immediately
+      // bounce the unverified user back to the dashboard.
+      if (data.session) {
+        await supabase.auth.signOut();
+      }
+
       if (data.user.identities && data.user.identities.length === 0) {
         toast({
           title: "Account Already Exists",
@@ -151,21 +159,26 @@ export default function AuthPage({ roleOverride }: { roleOverride?: AuthRole }) 
       setIsLoading(true);
       localStorage.setItem("pendingRole", role);
 
+      // The school name is NOT required for the Gmail path — the onboarding
+      // step collects it (required) before dashboard access. If the admin
+      // happened to fill the field in, pass it along so the school row is
+      // provisioned with it; otherwise clear any stale value.
       if (role === "school") {
         const schoolInput = document.getElementById("signup-school-name") as HTMLInputElement | null;
-        if (schoolInput?.value?.trim()) {
-          localStorage.setItem("pendingSchoolName", schoolInput.value.trim());
+        const schoolName = schoolInput?.value?.trim() || "";
+        if (schoolName) {
+          localStorage.setItem("pendingSchoolName", schoolName);
+        } else {
+          localStorage.removeItem("pendingSchoolName");
         }
       }
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
+          // Carry the role in the URL so the callback does not depend on
+          // localStorage surviving the redirect.
+          redirectTo: `${window.location.origin}/auth/callback?role=${role}`,
         },
       });
 
@@ -287,7 +300,7 @@ export default function AuthPage({ roleOverride }: { roleOverride?: AuthRole }) 
                         type="text"
                         placeholder="Lagos International School"
                         required
-                        maxLength={200}
+                        maxLength={150}
                         className="h-9 border-slate-300 bg-slate-50 pl-10 text-[12px] text-slate-900 placeholder:text-slate-400 focus-visible:ring-sky-500 dark:border-[#2d3c55] dark:bg-[#111b30] dark:text-[#dce7ff] dark:placeholder:text-[#6f7b91] dark:focus-visible:ring-[#72c8f6]"
                       />
                     </div>

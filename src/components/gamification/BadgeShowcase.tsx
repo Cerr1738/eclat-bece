@@ -9,6 +9,8 @@ import { toast } from "sonner";
 
 interface BadgeShowcaseProps {
   earnedBadgeIds: string[];
+  // Pins are always left-packed sequentially (no interior gaps); the array
+  // length equals the number of filled slots.
   pinnedBadgeIds: string[];
   onUpdatePinnedBadges: (newPinnedIds: string[]) => Promise<void>;
   unlockedSlotsCount?: number;
@@ -40,20 +42,34 @@ export function BadgeShowcase({
     return { index: i, isUnlocked, badge };
   });
 
-  const handleSlotClick = (index: number, isUnlocked: boolean) => {
-    if (!isUnlocked) return;
+  const handleSlotClick = (index: number, isUnlocked: boolean, hasBadge: boolean) => {
+    // Occupied slots stay clickable even when locked so legacy pins (from a
+    // higher-slot era or before earned-count gating) can be moved or cleared.
+    if (!isUnlocked && !hasBadge) return;
     setSelectedSlotIndex(index);
     setDialogOpen(true);
   };
 
   const handleSelectBadge = async (badgeId: string) => {
     if (selectedSlotIndex === null) return;
+    // Re-picking the badge already in this slot is a no-op.
+    if (pinnedBadgeIds[selectedSlotIndex] === badgeId) {
+      setDialogOpen(false);
+      return;
+    }
     setSaving(true);
     try {
-      const nextPinned = [...pinnedBadgeIds];
-      nextPinned[selectedSlotIndex] = badgeId;
-      await onUpdatePinnedBadges(nextPinned.filter(Boolean));
+      // Vacate the badge's old slot (move semantics), then either replace the
+      // clicked slot's badge or append at the first free position — appending
+      // keeps the showcase left-packed, so gaps can never form.
+      const nextPinned = pinnedBadgeIds.filter((id) => id !== badgeId);
+      if (selectedSlotIndex < nextPinned.length) nextPinned[selectedSlotIndex] = badgeId;
+      else nextPinned.push(badgeId);
+      await onUpdatePinnedBadges(nextPinned);
       setDialogOpen(false);
+    } catch {
+      // Failure already toasted and rolled back by the mutation handlers;
+      // keep the dialog open so the student can retry.
     } finally {
       setSaving(false);
     }
@@ -63,28 +79,33 @@ export function BadgeShowcase({
     if (selectedSlotIndex === null) return;
     setSaving(true);
     try {
+      // Splice shifts later badges left, preserving sequential order.
       const nextPinned = [...pinnedBadgeIds];
       nextPinned.splice(selectedSlotIndex, 1);
-      await onUpdatePinnedBadges(nextPinned.filter(Boolean));
+      await onUpdatePinnedBadges(nextPinned);
       setDialogOpen(false);
+    } catch {
+      // Failure already toasted and rolled back by the mutation handlers;
+      // keep the dialog open so the student can retry.
     } finally {
       setSaving(false);
     }
   };
 
   const handleTogglePinBadge = async (badgeId: string) => {
-    if (pinnedBadgeIds.includes(badgeId)) {
-      const nextPinned = pinnedBadgeIds.filter((id) => id !== badgeId);
-      await onUpdatePinnedBadges(nextPinned);
-      toast.info("Badge unpinned from showcase.");
-    } else {
-      if (pinnedBadgeIds.length >= unlockedSlotsCount) {
-        toast.error(`Showcase is full (${unlockedSlotsCount} slots max). Unpin a badge first!`);
-        return;
+    try {
+      if (pinnedBadgeIds.includes(badgeId)) {
+        await onUpdatePinnedBadges(pinnedBadgeIds.filter((id) => id !== badgeId));
+      } else {
+        if (pinnedBadgeIds.length >= unlockedSlotsCount) {
+          toast.error(`Showcase is full (${unlockedSlotsCount} slots max). Unpin a badge first!`);
+          return;
+        }
+        // Compact arrays mean appending lands in the first free slot.
+        await onUpdatePinnedBadges([...pinnedBadgeIds, badgeId]);
       }
-      const nextPinned = [...pinnedBadgeIds, badgeId];
-      await onUpdatePinnedBadges(nextPinned);
-      toast.success("Badge pinned to showcase! 🎉");
+    } catch {
+      // Failure already toasted and rolled back by the mutation handlers.
     }
   };
 
@@ -92,11 +113,11 @@ export function BadgeShowcase({
     <div className="rounded-xl border border-[#1d2a40] bg-[#0e192b] p-5 shadow-sm">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
-          <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+          <h3 className="text-base font-bold text-foreground flex items-center gap-2">
             <Award className="w-5 h-5 text-primary" />
             Badge Showcase (5 Slots)
           </h3>
-          <p className="text-xs text-slate-400">Pin your proudest achievements to your public profile</p>
+          <p className="text-xs text-muted-foreground">Pin your proudest achievements to your public profile</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -105,7 +126,7 @@ export function BadgeShowcase({
             variant="outline"
             size="sm"
             onClick={() => setGalleryOpen(true)}
-            className="h-8 border-[#2b3a54] bg-[#111e33] text-xs font-bold text-sky-300 hover:bg-[#182944] shadow-xs"
+            className="h-8 border-border bg-[#111e33] text-xs font-bold text-sky-300 hover:bg-[#182944] shadow-xs"
           >
             <Trophy className="w-3.5 h-3.5 mr-1.5 text-amber-400" />
             View All Badges ({earnedBadgeIds.length}/{INITIAL_18_BADGES.length})
@@ -119,8 +140,8 @@ export function BadgeShowcase({
           <button
             key={index}
             type="button"
-            disabled={!isUnlocked}
-            onClick={() => handleSlotClick(index, isUnlocked)}
+            disabled={!isUnlocked && !badge}
+            onClick={() => handleSlotClick(index, isUnlocked, Boolean(badge))}
             className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center p-2 transition-all ${
               badge
                 ? "bg-[#183149] border-primary/50 hover:scale-105 shadow-md cursor-pointer"
@@ -155,7 +176,7 @@ export function BadgeShowcase({
               Select a Badge to Pin
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Choose from your unlocked badges for Slot {(selectedSlotIndex ?? 0) + 1}
+              Choose from your unlocked badges for Slot {Math.min(selectedSlotIndex ?? 0, pinnedBadgeIds.length) + 1}
             </DialogDescription>
           </DialogHeader>
 

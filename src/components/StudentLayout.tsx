@@ -1,4 +1,5 @@
-import { ReactNode, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { Outlet } from "react-router-dom";
 import { Flame, Settings, User as UserIcon, KeyRound, Link2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -16,6 +17,7 @@ import { StudentSidebar } from "@/components/StudentSidebar";
 import { StudentProfileSettings } from "@/components/StudentProfileSettings";
 import { PasswordChangeDialog } from "@/components/PasswordChangeDialog";
 import { AccountSettingsDialog } from "@/components/AccountSettingsDialog";
+import { ContentLoader } from "@/components/PageLoader";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useTheme } from "next-themes";
@@ -23,11 +25,12 @@ import { getBadgeLevel, BadgeLevel } from "@/components/WinnerBadge";
 import logoDark from "@/assets/logo-dark.png";
 import logoLight from "@/assets/logo-light.png";
 
-interface StudentLayoutProps {
-  children: ReactNode;
-}
-
-export function StudentLayout({ children }: StudentLayoutProps) {
+/**
+ * Persistent student portal shell — mounted once as the /dashboard/student
+ * layout route element. Child pages render through the Outlet inside a local
+ * Suspense boundary so lazy page chunks never blank the sidebar or header.
+ */
+export function StudentLayout() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { theme, resolvedTheme } = useTheme();
@@ -39,8 +42,9 @@ export function StudentLayout({ children }: StudentLayoutProps) {
   const [displayName, setDisplayName] = useState("");
   const [totalWins, setTotalWins] = useState(0);
   const [badgeLevel, setBadgeLevel] = useState<BadgeLevel>('bronze');
-  
-  const logo = theme === "dark" ? logoLight : logoDark;
+
+  const isDark = resolvedTheme === "dark";
+  const logo = isDark ? logoLight : logoDark;
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -77,11 +81,13 @@ export function StudentLayout({ children }: StudentLayoutProps) {
         setCurrentStreak(streakData.current_streak);
       }
 
-      // Fetch quiz results to calculate wins
+      // Fetch quiz results to calculate wins (bounded — lifetime aggregates
+      // only need counts, but keep the payload capped)
       const { data: quizResults } = await supabase
         .from("quiz_results")
         .select("score")
-        .eq("student_id", studentData.id);
+        .eq("student_id", studentData.id)
+        .limit(5000);
 
       if (quizResults) {
         const wins = quizResults.filter(result => result.score >= 80).length;
@@ -102,37 +108,37 @@ export function StudentLayout({ children }: StudentLayoutProps) {
 
   return (
     <SidebarProvider>
-      <div data-student-theme={resolvedTheme === "dark" ? "dark" : "light"} className="min-h-screen flex w-full bg-[#081225] text-slate-100 dashboard-theme">
+      <div data-student-theme={isDark ? "dark" : "light"} className="min-h-screen flex w-full bg-background text-foreground dashboard-theme">
         <StudentSidebar />
         
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-w-0">
           {/* Header */}
-          <header className="border-b border-slate-700/60 bg-[#081225]/95 backdrop-blur-xl sticky top-0 z-50">
+          <header className="border-b border-border bg-card/95 backdrop-blur-xl sticky top-0 z-50">
             <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-5">
               <div className="flex items-center gap-2 sm:gap-3 md:gap-6 overflow-x-auto">
                 <SidebarTrigger className="md:hidden hover:scale-110 transition-transform duration-200 flex-shrink-0" />
-                <div className={`flex items-center gap-1.5 sm:gap-2 md:gap-2.5 px-2 sm:px-3 md:px-5 py-1.5 sm:py-2 md:py-2.5 rounded-full shadow-lg backdrop-blur-sm border transition-all duration-300 hover:scale-105 flex-shrink-0 ${
+                <div className={`flex items-center gap-1.5 sm:gap-2 md:gap-2.5 px-2 sm:px-3 md:px-5 py-1.5 sm:py-2 md:py-2.5 rounded-full shadow-sm backdrop-blur-sm border transition-all duration-300 hover:scale-105 flex-shrink-0 ${
                   currentStreak === 0 
-                    ? 'bg-destructive/20 border-destructive/30' 
+                    ? 'bg-destructive/10 border-destructive/30 text-destructive' 
                     : currentStreak >= 7 
-                    ? 'bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-green-500/40' 
-                    : 'bg-[#172338] border-[#2c3a54]'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' 
+                    : 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-[#f4d21f]'
                 }`}>
                   <Flame 
                     className={`transition-all duration-300 flex-shrink-0 w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-[18px] md:h-[18px] ${
                       currentStreak === 0 
                         ? 'text-destructive' 
                         : currentStreak >= 7 
-                        ? 'text-green-600 drop-shadow-[0_0_8px_rgba(34,197,94,0.5)]' 
-                        : 'text-[#f4d21f]'
+                        ? 'text-emerald-600 dark:text-emerald-400' 
+                        : 'text-amber-600 dark:text-[#f4d21f]'
                     }`} 
                   />
                   <span className={`text-xs sm:text-sm md:text-[15px] font-bold tracking-tight whitespace-nowrap ${
                     currentStreak === 0 
                       ? 'text-destructive' 
                       : currentStreak >= 7 
-                      ? 'text-green-600' 
-                      : 'text-[#f4d21f]'
+                      ? 'text-emerald-600 dark:text-emerald-400' 
+                      : 'text-amber-600 dark:text-[#f4d21f]'
                   }`}>{currentStreak}-day streak!</span>
                 </div>
               </div>
@@ -144,6 +150,7 @@ export function StudentLayout({ children }: StudentLayoutProps) {
                     <Button 
                       variant="ghost" 
                       size="icon"
+                      aria-label="Account menu"
                       className="hover:scale-110 transition-all duration-300 h-9 w-9 sm:h-10 sm:w-10 md:h-11 md:w-11 rounded-full flex-shrink-0 p-0 relative"
                     >
                       <Avatar className="h-full w-full">
@@ -185,7 +192,9 @@ export function StudentLayout({ children }: StudentLayoutProps) {
 
           {/* Main Content */}
           <main className="flex-1 overflow-auto">
-            {children}
+            <Suspense fallback={<ContentLoader />}>
+              <Outlet />
+            </Suspense>
           </main>
         </div>
       </div>

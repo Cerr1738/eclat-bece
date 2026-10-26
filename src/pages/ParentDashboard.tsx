@@ -6,11 +6,13 @@ import { Input } from "@/components/ui/input";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useParentAccount } from "@/hooks/useParentAccount";
+import { useChildrenData } from "@/hooks/useChildrenData";
 import { StudentReportDialog } from "@/components/StudentReportDialog";
 import { AssignPracticeDialog } from "@/components/AssignPracticeDialog";
 import { ChildOverviewCard } from "@/components/parent/ChildOverviewCard";
 import { DummyPaymentModal } from "@/components/parent/DummyPaymentModal";
 import { ParentActivityFeed } from "@/components/parent/ParentActivityFeed";
+import { PortalDataState } from "@/components/PortalDataState";
 import { DeleteChildDialog } from "@/components/parent/DeleteChildDialog";
 import { AddChildDialog } from "@/components/parent/AddChildDialog";
 import { EditChildNameDialog } from "@/components/parent/EditChildNameDialog";
@@ -38,11 +40,6 @@ export default function ParentDashboard() {
   const [selectedChild, setSelectedChild] = useState<LinkedChild | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [addChildOpen, setAddChildOpen] = useState(false);
-  const [linkedChildren, setLinkedChildren] = useState<LinkedChild[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [parentUserId, setParentUserId] = useState<string | null>(null);
-  const [childrenAnalytics, setChildrenAnalytics] = useState<Map<string, ChildAnalytics>>(new Map());
-  const [globalActivities, setGlobalActivities] = useState<QuizResult[]>([]);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedPaymentChild, setSelectedPaymentChild] = useState<{ id: string; name: string } | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -117,7 +114,7 @@ export default function ParentDashboard() {
       }
 
       const qIds = qData.map((q: any) => q.id);
-      const { data: optData } = await supabase.from(optionsTableName as any).select("*").in("question_id", qIds).order("display_order");
+      const { data: optData } = await supabase.from(optionsTableName).select("*").in("question_id", qIds).order("display_order");
       const optMap = (optData || []).reduce((acc: any, opt: any) => {
         if (!acc[opt.question_id]) acc[opt.question_id] = [];
         acc[opt.question_id].push(opt);
@@ -155,6 +152,26 @@ export default function ParentDashboard() {
     }
   };
 
+  // Shared cached children dataset (children + analytics + assignments +
+  // gamification enrichment + recent activity feed)
+  const { parentId, parentCode, loading: parentAccountLoading } = useParentAccount();
+  const {
+    children,
+    childrenAnalytics,
+    childrenAssignments,
+    globalActivities,
+    isLoading,
+    error: childrenError,
+    refresh: refreshChildren,
+  } = useChildrenData(parentId, { withGamification: true });
+
+  const linkedChildren: LinkedChild[] = children.map((child) => ({
+    ...child,
+    assignments: (childrenAssignments.get(child.id) || []).slice(0, 5),
+  }));
+
+  const [copiedCode, setCopiedCode] = useState(false);
+
   // Derived Top-Level Metrics
   const totalChildren = linkedChildren.length;
   const premiumChildrenCount = linkedChildren.filter(c => c.is_premium).length;
@@ -169,147 +186,21 @@ export default function ParentDashboard() {
 
   const overallAverage = totalQuizzesGlobal > 0 ? Math.round(totalScoreGlobal / totalQuizzesGlobal) : 0;
 
-  const { parentId, parentCode, loading: parentAccountLoading } = useParentAccount();
-  const [copiedCode, setCopiedCode] = useState(false);
-
   const handleCopyCode = async () => {
     if (parentCode) {
       await navigator.clipboard.writeText(parentCode);
       setCopiedCode(true);
-      toast.success("Parent code copied to clipboard!");
+      toast.success("Link code copied to clipboard!");
       setTimeout(() => setCopiedCode(false), 2000);
     }
   };
 
-  const fetchLinkedChildren = useCallback(async (pId: string) => {
-    try {
-      setGlobalActivities([]); // Reset global activities before fetching
-      const { data, error } = await supabase
-        .from("students")
-        .select(`
-          id,
-          user_id,
-          class_year,
-          is_premium,
-          profile:profiles(full_name, unique_id, username)
-        `)
-        .eq("parent_id", pId);
-
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        const studentIds = data.map((c) => c.id);
-        const nameMap = new Map(data.map((c) => [c.id, c.profile?.full_name || "Unknown"]));
-
-        // Batched parallel queries for all linked children
-        const [quizzesRes, assignmentsRes, gameProfilesRes, masteriesRes] = await Promise.all([
-          supabase
-            .from("quiz_results")
-            .select("*")
-            .in("student_id", studentIds)
-            .order("completed_at", { ascending: false }),
-          supabase
-            .from("practice_assignments")
-            .select("*")
-            .in("student_id", studentIds)
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("student_gamification_profile" as any)
-            .select("*")
-            .in("student_id", studentIds),
-          supabase
-            .from("student_topic_mastery" as any)
-            .select("student_id, subject, topic, rolling_accuracy, status")
-            .in("student_id", studentIds),
-        ]);
-
-        const allQuizzes = (quizzesRes.data || []) as QuizResult[];
-        const allAssignments = (assignmentsRes.data || []) as Assignment[];
-        const allGameProfiles = (gameProfilesRes.data || []) as any[];
-        const allMasteries = (masteriesRes.data || []) as any[];
-
-        const analyticsMap = new Map<string, ChildAnalytics>();
-        studentIds.forEach((sId) => {
-          const childQuizzes = allQuizzes.filter((q) => q.student_id === sId);
-          const gameProfile = allGameProfiles.find((p) => p.student_id === sId);
-          const childMasteries = allMasteries.filter((m) => m.student_id === sId);
-
-          const strongCount = childMasteries.filter((m) => m.status === "Strong").length;
-          const weakCount = childMasteries.filter((m) => m.status === "Weak").length;
-          const lifetimeEP = Number(gameProfile?.lifetime_ep || 0);
-          const lvl = calculateStudentLevel(lifetimeEP);
-          const tier = (gameProfile?.current_league_tier || 1) as LeagueTierNumber;
-          const leagueName = LEAGUE_TIERS[tier]?.name || "Starter League";
-
-          if (childQuizzes.length > 0 || gameProfile) {
-            const averageScore = childQuizzes.length > 0
-              ? childQuizzes.reduce((acc, result) => acc + result.score, 0) / childQuizzes.length
-              : 0;
-            const subjectMap = new Map<string, { totalScore: number; count: number }>();
-            childQuizzes.forEach((result) => {
-              const existing = subjectMap.get(result.subject) || { totalScore: 0, count: 0 };
-              subjectMap.set(result.subject, {
-                totalScore: existing.totalScore + result.score,
-                count: existing.count + 1,
-              });
-            });
-
-            const subjectPerformance = Array.from(subjectMap.entries()).map(([subject, subData]) => ({
-              subject: subject.charAt(0).toUpperCase() + subject.slice(1),
-              avgScore: Math.round(subData.totalScore / subData.count),
-              count: subData.count,
-            }));
-
-            analyticsMap.set(sId, {
-              studentId: sId,
-              averageScore: Math.round(averageScore),
-              totalQuizzes: childQuizzes.length,
-              subjectPerformance,
-              recentQuizzes: childQuizzes.slice(0, 5),
-              lifetimeEP,
-              currentLevel: lvl.level,
-              levelTitle: lvl.title,
-              leagueTier: tier,
-              leagueName,
-              streakCount: Number(gameProfile?.streak_count || 0),
-              streakShields: Number(gameProfile?.streak_shields || 0),
-              strongTopicsCount: strongCount,
-              weakTopicsCount: weakCount,
-            });
-          }
-        });
-        setChildrenAnalytics(analyticsMap);
-
-        const childrenWithAssignments = (data as unknown as LinkedChild[]).map((child) => ({
-          ...child,
-          assignments: allAssignments.filter((a) => a.student_id === child.id).slice(0, 5),
-        }));
-        setLinkedChildren(childrenWithAssignments);
-
-        const activitiesWithName = allQuizzes.map((q) => ({
-          ...q,
-          student_name: nameMap.get(q.student_id) || "Student",
-        }));
-        setGlobalActivities(activitiesWithName.slice(0, 3));
-      } else {
-        setLinkedChildren([]);
-      }
-    } catch (error) {
-      console.error("Error fetching linked children:", error);
-      toast.error("Failed to load linked children");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
-    if (parentId) {
-      setParentUserId(parentId);
-      fetchLinkedChildren(parentId);
-    } else if (!parentAccountLoading) {
-      setIsLoading(false);
+    if (!parentId && !parentAccountLoading) {
+      // Parent account could not be resolved; nothing further to load.
     }
-  }, [parentId, parentAccountLoading, fetchLinkedChildren]);
+  }, [parentId, parentAccountLoading]);
 
   const handleDeleteChild = async () => {
     if (!managedChild) return;
@@ -330,8 +221,8 @@ export default function ParentDashboard() {
       setDeleteDialogOpen(false);
       setManagedChild(null);
 
-      if (parentUserId) {
-        await fetchLinkedChildren(parentUserId);
+      if (parentId) {
+        await refreshChildren();
       }
     } catch (error: unknown) {
       console.error("Error deleting child:", error);
@@ -341,19 +232,27 @@ export default function ParentDashboard() {
     }
   };
 
+  // Failures must not masquerade as an empty family.
+  if (parentAccountLoading || isLoading) {
+    return <PortalDataState loading />;
+  }
+  if (childrenError) {
+    return <PortalDataState error={childrenError} onRetry={refreshChildren} />;
+  }
+
   return (
     <div className="space-y-6 sm:space-y-8 animate-fade-in">
       {/* Welcome Section */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-[#2d4b68] bg-[#0c2438] px-3 py-1 text-[11px] font-semibold text-[#58c4e8]">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-semibold text-primary">
             <Award className="h-3.5 w-3.5" />
             <span>Family Portal</span>
           </div>
-          <h1 className="mt-2 text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-[#71c9ed]">
-            Parent Overview<span className="text-[#3bc2f3]">.</span>
+          <h1 className="mt-2 text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-foreground">
+            Parent Overview<span className="text-primary">.</span>
           </h1>
-          <p className="mt-1 text-xs sm:text-sm text-slate-400">
+          <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
             Empower your children's BECE &amp; Common Entrance preparation with real-time analytics.
           </p>
         </div>
@@ -362,13 +261,13 @@ export default function ParentDashboard() {
           <Button
             variant="outline"
             onClick={() => navigate("/dashboard/parent/reports")}
-            className="border-slate-700 bg-slate-900/60 text-slate-200 hover:bg-slate-800 text-xs sm:text-sm"
+            className="text-xs sm:text-sm"
           >
             View Reports
           </Button>
           <Button
             onClick={() => setAddChildOpen(true)}
-            className="bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff] font-semibold text-xs sm:text-sm"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs sm:text-sm shadow-sm"
           >
             <Plus className="mr-1.5 h-3.5 w-3.5" />
             Add Child
@@ -379,55 +278,55 @@ export default function ParentDashboard() {
       {/* Top-Level Overview Metrics */}
       {!isLoading && linkedChildren.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-          <Card className="border border-[#233148] bg-[#0c1628] text-slate-100 rounded-2xl min-w-0 hover:border-[#384c6e] transition-colors">
+          <Card className="border border-border bg-card text-card-foreground shadow-sm rounded-2xl min-w-0 hover:border-primary/40 transition-colors">
             <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Children</p>
-                <p className="mt-1 text-2xl sm:text-3xl font-black text-white">{totalChildren}</p>
-                <p className="text-[11px] text-[#58c4e8] mt-0.5">Enrolled</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Children</p>
+                <p className="mt-1 text-2xl sm:text-3xl font-black text-foreground">{totalChildren}</p>
+                <p className="text-[11px] text-primary mt-0.5 font-medium">Enrolled</p>
               </div>
-              <div className="p-3 bg-[#0c2438] text-[#58c4e8] rounded-xl flex-shrink-0">
+              <div className="p-3 bg-primary/10 text-primary rounded-xl flex-shrink-0">
                 <Users className="h-5 w-5" />
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border border-[#233148] bg-[#0c1628] text-slate-100 rounded-2xl min-w-0 hover:border-[#384c6e] transition-colors">
+          <Card className="border border-border bg-card text-card-foreground shadow-sm rounded-2xl min-w-0 hover:border-emerald-500/40 transition-colors">
             <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Avg Score</p>
-                <p className="mt-1 text-2xl sm:text-3xl font-black text-white">{overallAverage}%</p>
-                <p className="text-[11px] text-emerald-400 mt-0.5">Overall Accuracy</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Avg Score</p>
+                <p className="mt-1 text-2xl sm:text-3xl font-black text-foreground">{overallAverage}%</p>
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">Overall Accuracy</p>
               </div>
-              <div className="p-3 bg-[#102f2b] text-[#48d7b7] rounded-xl flex-shrink-0">
+              <div className="p-3 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl flex-shrink-0">
                 <TrendingUp className="h-5 w-5" />
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border border-[#233148] bg-[#0c1628] text-slate-100 rounded-2xl min-w-0 hover:border-[#384c6e] transition-colors">
+          <Card className="border border-border bg-card text-card-foreground shadow-sm rounded-2xl min-w-0 hover:border-violet-500/40 transition-colors">
             <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Quizzes</p>
-                <p className="mt-1 text-2xl sm:text-3xl font-black text-white">{totalQuizzesGlobal}</p>
-                <p className="text-[11px] text-[#c4a9ff] mt-0.5">Completed</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Quizzes</p>
+                <p className="mt-1 text-2xl sm:text-3xl font-black text-foreground">{totalQuizzesGlobal}</p>
+                <p className="text-[11px] text-violet-600 dark:text-violet-400 mt-0.5 font-medium">Completed</p>
               </div>
-              <div className="p-3 bg-[#2b2145] text-[#c4a9ff] rounded-xl flex-shrink-0">
+              <div className="p-3 bg-violet-500/10 text-violet-600 dark:text-violet-400 rounded-xl flex-shrink-0">
                 <Target className="h-5 w-5" />
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border border-[#233148] bg-[#0c1628] text-slate-100 rounded-2xl min-w-0 hover:border-[#384c6e] transition-colors">
+          <Card className="border border-border bg-card text-card-foreground shadow-sm rounded-2xl min-w-0 hover:border-amber-500/40 transition-colors">
             <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Plan</p>
-                <p className="mt-1 text-2xl sm:text-3xl font-black text-white">
-                  {premiumChildrenCount} <span className="text-xs font-bold text-amber-400">VIP</span>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Plan</p>
+                <p className="mt-1 text-2xl sm:text-3xl font-black text-foreground">
+                  {premiumChildrenCount} <span className="text-xs font-bold text-amber-500">VIP</span>
                 </p>
-                <p className="text-[11px] text-[#ffca6a] mt-0.5">Premium Learners</p>
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 font-medium">Premium Learners</p>
               </div>
-              <div className="p-3 bg-[#352813] text-[#ffca6a] rounded-xl flex-shrink-0">
+              <div className="p-3 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl flex-shrink-0">
                 <Award className="h-5 w-5" />
               </div>
             </CardContent>
@@ -449,47 +348,47 @@ export default function ParentDashboard() {
       {/* Children Overview */}
       {isLoading ? (
         <div className="text-center py-12">
-          <p className="text-slate-400 text-sm">Loading your family data...</p>
+          <p className="text-muted-foreground text-sm">Loading your family data...</p>
         </div>
       ) : linkedChildren.length === 0 ? (
-        <Card className="border-2 border-dashed border-[#26344d] bg-[#0c1628] text-slate-100 rounded-2xl">
+        <Card className="border-2 border-dashed border-border bg-card text-card-foreground shadow-sm rounded-2xl">
           <CardContent className="py-16 text-center flex flex-col items-center justify-center">
-            <div className="w-20 h-20 bg-[#0c2438] text-[#58c4e8] rounded-full flex items-center justify-center mb-5">
+            <div className="w-20 h-20 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-5">
               <Users className="h-10 w-10" />
             </div>
-            <h3 className="text-xl sm:text-2xl font-bold text-[#71c9ed] mb-2">Welcome to your Parent Portal!</h3>
-            <p className="text-slate-400 mb-6 max-w-md mx-auto text-xs sm:text-sm">
+            <h3 className="text-xl sm:text-2xl font-bold text-foreground mb-2">Welcome to your Parent Portal!</h3>
+            <p className="text-muted-foreground mb-6 max-w-md mx-auto text-xs sm:text-sm">
               Connect or create an account for your child. Once linked, you can monitor exam readiness, track strengths, and assign targeted drills.
             </p>
             <Button
               onClick={() => setAddChildOpen(true)}
-              className="bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff] font-semibold px-6 py-2.5 rounded-xl shadow-lg"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold px-6 py-2.5 rounded-xl shadow-md"
             >
               <Plus className="mr-2 h-4 w-4" />
               Create First Child Account
             </Button>
 
             {parentCode && (
-              <div className="mt-8 pt-6 border-t border-[#1d2a40] max-w-sm w-full">
-                <p className="text-xs uppercase tracking-wider font-semibold text-slate-400 mb-1">Or link existing student account</p>
-                <p className="text-xs text-slate-400 mb-3">Share this Parent Link Code with your child:</p>
-                <code className="block border border-dashed border-[#31506c] bg-[#091426] px-3 py-3 text-center text-xl font-bold tracking-[0.25em] text-[#71c9ed] rounded-xl select-all">
+              <div className="mt-8 pt-6 border-t border-border max-w-sm w-full">
+                <p className="text-xs uppercase tracking-wider font-semibold text-muted-foreground mb-1">Or link existing student account</p>
+                <p className="text-xs text-muted-foreground mb-3">Share this Link Code with your child:</p>
+                <code className="block border border-dashed border-primary/30 bg-muted/50 px-3 py-3 text-center text-xl font-bold tracking-[0.25em] text-primary rounded-xl select-all">
                   {parentCode}
                 </code>
                 <Button
                   onClick={handleCopyCode}
                   variant="outline"
                   size="sm"
-                  className="mt-3 w-full border-[#2d4b68] bg-[#091426] hover:bg-[#15273f] hover:border-[#3bc2f3] text-slate-200 font-semibold"
+                  className="mt-3 w-full border-border bg-card hover:bg-accent font-semibold"
                 >
                   {copiedCode ? (
                     <>
-                      <Check className="mr-2 h-4 w-4 text-emerald-400" />
+                      <Check className="mr-2 h-4 w-4 text-emerald-500" />
                       copied
                     </>
                   ) : (
                     <>
-                      <Copy className="mr-2 h-4 w-4 text-[#58c4e8]" />
+                      <Copy className="mr-2 h-4 w-4 text-primary" />
                       copy code
                     </>
                   )}
@@ -506,14 +405,14 @@ export default function ParentDashboard() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <div className="h-5 w-1 bg-[#3bc2f3] rounded-full" />
-                  <h3 className="text-lg sm:text-xl font-black text-[#71c9ed] tracking-tight">Recent Activities</h3>
+                  <div className="h-5 w-1 bg-primary rounded-full" />
+                  <h3 className="text-lg sm:text-xl font-black text-foreground tracking-tight">Recent Activities</h3>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => navigate("/dashboard/parent/activities")}
-                  className="text-xs font-semibold text-[#58c4e8] hover:text-white hover:bg-[#15233c] rounded-xl"
+                  className="text-xs font-semibold text-primary hover:text-primary hover:bg-primary/10 rounded-xl"
                 >
                   View All <ChevronRight className="ml-1 h-3.5 w-3.5" />
                 </Button>
@@ -524,47 +423,47 @@ export default function ParentDashboard() {
             {/* Parent Link Code Card - Matching Student Dashboard */}
             <div className="space-y-4 flex flex-col">
               <div className="flex items-center gap-2.5">
-                <div className="h-5 w-1 bg-[#3bc2f3] rounded-full" />
-                <h3 className="text-lg sm:text-xl font-black text-[#71c9ed] tracking-tight">Parent Link Code</h3>
+                <div className="h-5 w-1 bg-primary rounded-full" />
+                <h3 className="text-lg sm:text-xl font-black text-foreground tracking-tight">Your Link Code</h3>
               </div>
-              <div className="rounded-2xl border border-[#233148] bg-[#0c1628] p-5 text-slate-100 flex flex-col justify-between flex-1">
+              <div className="rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm flex flex-col justify-between flex-1">
                 <div>
-                  <h2 className="text-base sm:text-lg font-semibold text-[#71c9ed]">Parent Link Code</h2>
-                  <p className="mt-1 text-xs text-slate-400">Share this code with your child to connect accounts</p>
+                  <h2 className="text-base sm:text-lg font-semibold text-foreground">Your Link Code</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">Share this code with your child to connect accounts</p>
                   {parentCode ? (
                     <>
-                      <code className="mt-5 block border border-dashed border-[#31506c] bg-[#091426] px-3 py-4 text-center text-2xl font-bold tracking-[0.25em] text-[#71c9ed] rounded-xl select-all">
+                      <code className="mt-5 block border border-dashed border-primary/30 bg-muted/50 px-3 py-4 text-center text-2xl font-bold tracking-[0.25em] text-primary rounded-xl select-all">
                         {parentCode}
                       </code>
                       <Button
                         onClick={handleCopyCode}
                         variant="outline"
-                        className="mt-3 w-full border-[#2d4b68] bg-[#091426] hover:bg-[#15273f] hover:border-[#3bc2f3] text-slate-200 font-semibold"
+                        className="mt-3 w-full border-border bg-card hover:bg-accent font-semibold"
                       >
                         {copiedCode ? (
                           <>
-                            <Check className="mr-2 h-4 w-4 text-emerald-400" />
+                            <Check className="mr-2 h-4 w-4 text-emerald-500" />
                             copied
                           </>
                         ) : (
                           <>
-                            <Copy className="mr-2 h-4 w-4 text-[#58c4e8]" />
+                            <Copy className="mr-2 h-4 w-4 text-primary" />
                             copy code
                           </>
                         )}
                       </Button>
                     </>
                   ) : (
-                    <p className="mt-6 text-sm text-slate-400">Your link code will appear here.</p>
+                    <p className="mt-6 text-sm text-muted-foreground">Your link code will appear here.</p>
                   )}
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-[#1d2a40] space-y-1.5 text-xs text-slate-400">
-                  <p className="flex items-center gap-2 text-slate-300 font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#3bc2f3]" />
+                <div className="mt-6 pt-4 border-t border-border space-y-1.5 text-xs text-muted-foreground">
+                  <p className="flex items-center gap-2 text-foreground font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                     How to connect:
                   </p>
-                  <p className="text-[11px] leading-relaxed text-slate-400">
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
                     Children can link your account by entering this code in their dashboard under settings or during sign-up.
                   </p>
                 </div>
@@ -576,14 +475,14 @@ export default function ParentDashboard() {
           <div id="children" className="space-y-4 scroll-mt-24">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="h-5 w-1 bg-[#3bc2f3] rounded-full" />
-                <h3 className="text-lg sm:text-xl font-black text-[#71c9ed] tracking-tight">My Children</h3>
+                <div className="h-5 w-1 bg-primary rounded-full" />
+                <h3 className="text-lg sm:text-xl font-black text-foreground tracking-tight">My Children</h3>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => navigate("/dashboard/parent/children")}
-                className="text-xs font-semibold text-[#58c4e8] hover:text-white hover:bg-[#15233c] rounded-xl"
+                className="text-xs font-semibold text-primary hover:text-primary hover:bg-primary/10 rounded-xl"
               >
                 View All <ChevronRight className="ml-1 h-3.5 w-3.5" />
               </Button>
@@ -678,8 +577,8 @@ export default function ParentDashboard() {
       <AddChildDialog
         open={addChildOpen}
         onOpenChange={setAddChildOpen}
-        parentId={parentUserId}
-        onSuccess={() => parentUserId && fetchLinkedChildren(parentUserId)}
+        parentId={parentId}
+        onSuccess={() => refreshChildren()}
       />
 
       <DummyPaymentModal
@@ -688,7 +587,7 @@ export default function ParentDashboard() {
         studentId={selectedPaymentChild?.id || ""}
         studentName={selectedPaymentChild?.name || ""}
         onSuccess={() => {
-          if (parentUserId) fetchLinkedChildren(parentUserId);
+          refreshChildren();
         }}
       />
 
@@ -704,14 +603,14 @@ export default function ParentDashboard() {
         open={editNameOpen}
         onOpenChange={setEditNameOpen}
         child={managedChild}
-        onSuccess={() => parentUserId && fetchLinkedChildren(parentUserId)}
+        onSuccess={() => refreshChildren()}
       />
       
       <EditChildUsernameDialog
         open={editUsernameOpen}
         onOpenChange={setEditUsernameOpen}
         child={managedChild}
-        onSuccess={() => parentUserId && fetchLinkedChildren(parentUserId)}
+        onSuccess={() => refreshChildren()}
       />
 
       <ChangeChildPasswordDialog

@@ -1,115 +1,272 @@
-import { useState } from "react";
-import { Briefcase, Search, Plus, Mail } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Search, Plus, Mail, Phone, Users, Edit2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { SchoolLayout } from "@/components/school/SchoolLayout";
+import { SchoolPageHeader } from "@/components/school/SchoolPageHeader";
+import { SchoolDataState } from "@/components/school/SchoolDataState";
+import { SchoolAddTeacherDialog } from "@/components/school/SchoolAddTeacherDialog";
+import { SchoolEditTeacherDialog } from "@/components/school/SchoolEditTeacherDialog";
+import { useSchoolData, SchoolTeacherItem } from "@/hooks/useSchoolData";
+import { SchoolConfirmDialog } from "@/components/school/SchoolConfirmDialog";
+import { supabase } from "@/integrations/supabase/client";
+import { getEdgeFunctionError } from "@/lib/errorUtils";
 import { toast } from "sonner";
 
-interface Teacher {
-  name: string;
-  role: string;
-  department: string;
-  load: string;
-  email: string;
-  classesCount: number;
-}
-
-const teachersData: Teacher[] = [
-  { name: "Mrs. Sarah Johnson", role: "Lead Teacher", department: "Mathematics", load: "83%", email: "s.johnson@school.edu", classesCount: 4 },
-  { name: "Mr. Chukwuma Okafor", role: "Senior Instructor", department: "English Language", load: "76%", email: "c.okafor@school.edu", classesCount: 3 },
-  { name: "Miss Fatima Ali", role: "Science Specialist", department: "Basic Science", load: "91%", email: "f.ali@school.edu", classesCount: 5 },
-  { name: "Mr. David Adeleke", role: "Humanities Teacher", department: "Social Studies", load: "70%", email: "d.adeleke@school.edu", classesCount: 3 },
-];
+const teacherLoginTone = (teacher: unknown) => {
+  const linked = (teacher as { user_id?: string | null }).user_id;
+  return linked
+    ? "text-emerald-700 dark:text-emerald-300"
+    : "text-amber-700 dark:text-amber-300";
+};
 
 export function SchoolTeachersPage() {
+  const { school, teachers, classes, refresh, isLoading, error } = useSchoolData();
   const [search, setSearch] = useState("");
-  const [department, setDepartment] = useState("all");
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [selectedEditTeacher, setSelectedEditTeacher] = useState<SchoolTeacherItem | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SchoolTeacherItem | null>(null);
 
-  const filteredTeachers = teachersData.filter((t) => {
-    const matchesSearch =
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.department.toLowerCase().includes(search.toLowerCase());
-    const matchesDept = department === "all" || t.department.toLowerCase() === department.toLowerCase();
-    return matchesSearch && matchesDept;
-  });
+  const confirmDeleteTeacher = async () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    setDeleteTarget(null);
+    setIsDeleting(target.id);
+    try {
+      // If the teacher has a portal login, revoke it first (removes the auth
+      // user; school_teachers.user_id is SET NULL by its FK).
+      if (target.user_id) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const { error: revokeErr } = await supabase.functions.invoke("create-teacher-account", {
+          headers: session?.access_token
+            ? { Authorization: `Bearer ${session.access_token}` }
+            : undefined,
+          body: { action: "revoke-login", teacher_id: target.id },
+        });
+        if (revokeErr) {
+          const message = await getEdgeFunctionError(revokeErr, "Failed to revoke teacher login");
+          throw new Error(message);
+        }
+      }
+
+      const { error } = await supabase
+        .from("school_teachers")
+        .delete()
+        .eq("id", target.id);
+      if (error) throw error;
+
+      // Clear lead_teacher on classes led by this name, or the deleted
+      // teacher respawns as a virtual ghost.
+      for (const cls of classes) {
+        if (cls.lead_teacher && cls.lead_teacher.trim().toLowerCase() === target.full_name.trim().toLowerCase()) {
+          await supabase
+            .from("school_classes")
+            .update({ lead_teacher: null })
+            .eq("id", cls.id);
+        }
+      }
+
+      toast.success(`Teacher "${target.full_name}" removed from the directory`);
+      refresh();
+    } catch (err: any) {
+      console.error("Error deleting teacher:", err);
+      toast.error(err.message || "Failed to delete teacher");
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+
+  const filteredTeachers = useMemo(() => {
+    return teachers.filter((t) => {
+      const q = search.toLowerCase();
+      const matchesSearch =
+        t.full_name.toLowerCase().includes(q) ||
+        (t.email && t.email.toLowerCase().includes(q));
+
+      return matchesSearch;
+    });
+  }, [teachers, search]);
+
+  if (isLoading) {
+    return <SchoolDataState loading />;
+  }
+  if (error) {
+    return <SchoolDataState error={error} onRetry={refresh} />;
+  }
 
   return (
-    <SchoolLayout
-      title="Teacher Directory"
-      subtitle="Manage faculty profiles, department assignments, and class allocations."
-      actions={
-        <Button
-          onClick={() => toast.info("Teacher invitation feature will be available soon.")}
-          className="bg-[#3bc2f3] text-[#041c2d] hover:bg-[#6cd8ff] font-semibold text-xs sm:text-sm"
-        >
-          <Plus className="mr-1.5 h-4 w-4" />
-          Add teacher
-        </Button>
-      }
-    >
-      {/* Filter and Search Bar */}
-      <div className="mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-xl border border-[#2a3852] bg-[#0f182b] p-3 text-xs">
-        <div className="flex items-center gap-2 flex-1 rounded-lg border border-[#34415b] bg-[#071023] px-3 py-2 text-slate-200">
-          <Search className="h-4 w-4 text-slate-400 flex-shrink-0" />
+    <>
+      <SchoolPageHeader
+        title="Teacher Directory"
+        subtitle="Register teachers, manage their details, and create their portal logins."
+        actions={
+          <Button
+            onClick={() => setAddDialogOpen(true)}
+            className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs sm:text-sm"
+          >
+            <Plus className="mr-1.5 h-4 w-4" />
+            Add teacher
+          </Button>
+        }
+      />
+      {/* Search Bar & Department Filter */}
+      <div className="mb-6 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 text-xs shadow-sm">
+        <div className="flex items-center gap-2 flex-1 rounded-lg border border-border bg-muted/60 px-3 py-2 text-foreground focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20">
+          <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search teachers by name or subject..."
-            className="w-full bg-transparent text-xs text-white placeholder:text-slate-400 focus:outline-none"
+            placeholder="Search teachers by name or email..."
+            className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
         </div>
+      </div>
 
-        <div className="flex items-center gap-2">
-          <select
-            value={department}
-            onChange={(e) => setDepartment(e.target.value)}
-            className="rounded-lg border border-[#34415b] bg-[#071023] px-3 py-2 text-xs text-slate-200 focus:outline-none"
-          >
-            <option value="all">All Departments</option>
-            <option value="mathematics">Mathematics</option>
-            <option value="english language">English Language</option>
-            <option value="basic science">Basic Science</option>
-            <option value="social studies">Social Studies</option>
-          </select>
+      {/* Faculty List / Empty State */}
+      {teachers.length === 0 ? (
+        <Card className="border border-dashed border-border bg-card/60 p-12 text-center shadow-sm">
+          <CardContent className="space-y-4 max-w-md mx-auto">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-primary">
+              <Users className="h-7 w-7" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-foreground">No Faculty Members Registered</h3>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Add faculty members and create their portal logins.
+              </p>
+            </div>
+            <Button
+              onClick={() => setAddDialogOpen(true)}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold"
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              Add First Teacher
+            </Button>
+          </CardContent>
+        </Card>
+      ) : filteredTeachers.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card p-8 text-center text-xs text-muted-foreground shadow-sm">
+          No faculty members match your search criteria.
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredTeachers.map((teacher) => (
+            <Card
+              key={teacher.id}
+              className="border border-border bg-card text-card-foreground hover:border-primary/40 transition-colors flex flex-col justify-between shadow-sm"
+            >
+              <CardContent className="p-5 space-y-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-foreground text-base truncate">{teacher.full_name}</h3>
+                  </div>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold border flex-shrink-0 ${
+                      teacher.status === "Active"
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                        : "border-border bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {teacher.status}
+                  </span>
+                </div>
 
-      {/* Teacher Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-        {filteredTeachers.map((teacher) => (
-          <Card key={teacher.name} className="border border-[#2a3852] bg-[#151e33] text-slate-100 min-w-0 hover:border-[#3d5377] transition-colors">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#15314d] text-lg font-bold text-[#7dd3fc]">
-                  {teacher.name.replace(/^(Mr\.|Mrs\.|Miss)\s+/, "").charAt(0)}
+                {/* Login status */}
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span
+                    className={`inline-block h-2 w-2 rounded-full flex-shrink-0 ${
+                      (teacher as { user_id?: string | null }).user_id
+                        ? "bg-emerald-500"
+                        : "bg-amber-500"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span className={teacherLoginTone(teacher)}>
+                    {(teacher as { user_id?: string | null }).user_id
+                      ? "Login active"
+                      : "No portal account yet"}
+                  </span>
                 </div>
-                <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-sky-300">
-                  {teacher.role}
-                </span>
-              </div>
 
-              <p className="text-base font-bold text-white truncate">{teacher.name}</p>
-              <p className="mt-0.5 text-xs text-[#58c4e8] font-medium">{teacher.department}</p>
+                {/* Contact info if provided */}
+                <div className="space-y-1 text-xs text-muted-foreground border-t border-border/60 pt-2">
+                  {teacher.email && (
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Mail className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                      <span className="truncate">{teacher.email}</span>
+                    </div>
+                  )}
+                  {teacher.phone && (
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Phone className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                      <span className="truncate">{teacher.phone}</span>
+                    </div>
+                  )}
+                </div>
 
-              <div className="mt-4 pt-3 border-t border-[#233148] space-y-2 text-xs text-slate-300">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Class load</span>
-                  <span className="font-bold text-white">{teacher.load}</span>
+                {/* Action Trigger */}
+                <div className="pt-2 border-t border-border/60 flex items-center justify-between">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Delete teacher ${teacher.full_name}`}
+                    onClick={() => setDeleteTarget(teacher)}
+                    disabled={isDeleting === teacher.id}
+                    className="h-7 px-2 text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="mr-1 h-3 w-3" aria-hidden="true" />
+                    Delete
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedEditTeacher(teacher);
+                      setEditDialogOpen(true);
+                    }}
+                    className="h-7 px-2.5 border-border bg-card text-xs text-foreground hover:bg-accent hover:border-primary/50"
+                  >
+                    <Edit2 className="mr-1 h-3 w-3" />
+                    Edit Teacher
+                  </Button>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Classes taught</span>
-                  <span className="font-semibold text-slate-200">{teacher.classesCount} Classes</span>
-                </div>
-                <div className="flex items-center gap-1.5 pt-1 text-[11px] text-slate-400 truncate">
-                  <Mail className="h-3 w-3 text-slate-500 flex-shrink-0" />
-                  <span className="truncate">{teacher.email}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </SchoolLayout>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Delete Teacher Confirmation */}
+      <SchoolConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={`Delete teacher "${deleteTarget?.full_name}"?`}
+        description="The teacher will be removed from the directory and their portal login revoked. This action cannot be undone."
+        onConfirm={confirmDeleteTeacher}
+      />
+      {/* Add Teacher Dialog */}
+      {school?.id && (
+        <SchoolAddTeacherDialog
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+          schoolId={school.id}
+          onCreated={() => refresh()}
+        />
+      )}
+
+      {/* Edit Teacher Dialog */}
+      {school?.id && (
+        <SchoolEditTeacherDialog
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          teacher={selectedEditTeacher}
+          classes={classes.map((cls) => ({ id: cls.id, lead_teacher: cls.lead_teacher }))}
+          schoolId={school.id}
+          onSaved={() => refresh()}
+        />
+      )}
+    </>
   );
 }
 
