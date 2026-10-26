@@ -447,6 +447,7 @@ export type Database = {
           id: string
           num_questions: number
           parent_id: string | null
+          questions_snapshot: Json | null
           school_id: string | null
           score: number | null
           status: string
@@ -461,6 +462,7 @@ export type Database = {
           id?: string
           num_questions: number
           parent_id?: string | null
+          questions_snapshot?: Json | null
           school_id?: string | null
           score?: number | null
           status?: string
@@ -475,6 +477,7 @@ export type Database = {
           id?: string
           num_questions?: number
           parent_id?: string | null
+          questions_snapshot?: Json | null
           school_id?: string | null
           score?: number | null
           status?: string

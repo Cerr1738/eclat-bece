@@ -21,6 +21,7 @@ import {
   Flame,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -255,8 +256,8 @@ export default function QuizPage() {
             let alreadyCompletedToday = false;
 
             // Primary check: gamification profile date stamp
-            const { data: gameProfile } = await supabase
-              .from("student_gamification_profile" as any)
+            const { data: gameProfile } = await (supabase as any)
+              .from("student_gamification_profile")
               .select("last_daily_challenge_date")
               .eq("student_id", studentRecord.id)
               .maybeSingle();
@@ -267,8 +268,8 @@ export default function QuizPage() {
 
             // Fallback 1: points ledger for daily_challenge entries today
             if (!alreadyCompletedToday) {
-              const { data: todayLedger } = await supabase
-                .from("student_points_ledger" as any)
+              const { data: todayLedger } = await (supabase as any)
+                .from("student_points_ledger")
                 .select("id")
                 .eq("student_id", studentRecord.id)
                 .eq("source_type", "daily_challenge")
@@ -297,7 +298,8 @@ export default function QuizPage() {
 
             if (alreadyCompletedToday) {
               // Ensure gamification profile has date recorded
-              await (supabase.from("student_gamification_profile" as any) as any)
+              await (supabase as any)
+                .from("student_gamification_profile")
                 .update({ last_daily_challenge_date: todayUTC })
                 .eq("student_id", studentRecord.id);
 
@@ -374,8 +376,8 @@ export default function QuizPage() {
         // If duel challenge, fetch duel details and question IDs
         let duelQuestionIds: string[] = [];
         if (duelId) {
-          const { data: duelData } = await supabase
-            .from("arena_challenges" as any)
+          const { data: duelData } = await (supabase as any)
+            .from("arena_challenges")
             .select("subject, topic, max_time_seconds, question_ids")
             .eq("id", duelId)
             .maybeSingle();
@@ -447,7 +449,7 @@ export default function QuizPage() {
             ? "comprehension_passages_year6"
             : "comprehension_passages_year9";
 
-        let query = supabase.from(tableName).select(`
+        let query = (supabase as any).from(tableName).select(`
             *,
             passage:${passageTableName}(title, passage_text)
           `);
@@ -490,8 +492,8 @@ export default function QuizPage() {
         const questionIds = questionsData.map((q: any) => q.id);
 
         // Fetch all options for selected questions in a single batched query
-        const { data: allOptionsData, error: optionsError } = await supabase
-          .from(optionsTableName as any)
+        const { data: allOptionsData, error: optionsError } = await (supabase as any)
+          .from(optionsTableName)
           .select("*")
           .in("question_id", questionIds)
           .order("display_order");
@@ -552,7 +554,7 @@ export default function QuizPage() {
         setLoading(false);
       }
     },
-    [user, subject, topic, assignmentId, navigate, isReviewMode, getSessionCacheKey]
+    [user, subject, topic, assignmentId, navigate, isReviewMode, isDailyChallenge, duelId, getSessionCacheKey]
   );
 
   useEffect(() => {
@@ -765,7 +767,7 @@ export default function QuizPage() {
               status: "completed",
               score: percentage,
               completed_at: new Date().toISOString(),
-              questions_snapshot: questionsSnapshot,
+              questions_snapshot: questionsSnapshot as unknown as Json,
             })
             .eq("id", assignmentId);
 
