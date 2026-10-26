@@ -67,11 +67,13 @@ export default function StudentLeaderboardPage() {
           .maybeSingle();
 
         if (studentRecord) {
-          const { data: gamificationProfile } = await supabase
-            .from("student_gamification_profile" as any)
+          const { data: gamificationProfile } = (await (supabase as any)
+            .from("student_gamification_profile")
             .select("current_level, current_league_tier")
             .eq("student_id", studentRecord.id)
-            .maybeSingle();
+            .maybeSingle()) as {
+              data: { current_level?: number | null; current_league_tier?: number | null } | null;
+            };
 
           if (gamificationProfile) {
             setCurrentLevel(Number(gamificationProfile.current_level || 1));
@@ -220,38 +222,40 @@ export default function StudentLeaderboardPage() {
       </div>
 
       {/* Main View Mode Selector: Cohort vs National */}
-      <Tabs value={activeView} onValueChange={(v) => setActiveView(v as any)} className="space-y-6">
-        <div className="flex items-center justify-between border-b border-border/40 pb-3">
-          <TabsList className="bg-[#0e192b] border border-[#2b3a54]">
-            <TabsTrigger value="cohort" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground gap-2 text-xs font-bold">
+      <Tabs value={activeView} onValueChange={(v) => setActiveView(v as any)} className="space-y-6 w-full max-w-full min-w-0">
+        <div className="flex items-center justify-between border-b border-border/40 pb-3 overflow-x-auto max-w-full">
+          <TabsList className="bg-[#0e192b] border border-[#2b3a54] max-w-full">
+            <TabsTrigger value="cohort" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground gap-2 text-xs font-bold whitespace-nowrap">
               <Users className="w-3.5 h-3.5" />
               Weekly League Cohort (30 Scholars)
             </TabsTrigger>
-            <TabsTrigger value="national" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground gap-2 text-xs font-bold">
+            <TabsTrigger value="national" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground gap-2 text-xs font-bold whitespace-nowrap">
               <Trophy className="w-3.5 h-3.5" />
               National Leaderboards
             </TabsTrigger>
           </TabsList>
         </div>
 
-        <TabsContent value="cohort" className="mt-0 focus-visible:outline-none">
+        <TabsContent value="cohort" className="mt-0 focus-visible:outline-none min-w-0">
           <WeeklyLeagueCohortCard />
         </TabsContent>
 
-        <TabsContent value="national" className="mt-0 focus-visible:outline-none">
-          <CompetitionLeaderboards
-            showCurrentUserPosition={true}
-            currentUserName={currentUserName}
-            weeklyLeaders={weeklyLeaders}
-            monthlyLeaders={monthlyLeaders}
-            annualLeaders={annualLeaders}
-            schoolLeaders={schoolLeaders}
-            mathLeaders={mathLeaders}
-            englishLeaders={englishLeaders}
-            currentUserRanks={currentUserRanks}
-            currentUserPoints={currentUserPoints}
-            defaultTab="weekly"
-          />
+        <TabsContent value="national" className="mt-0 focus-visible:outline-none min-w-0 overflow-hidden">
+          <div className="min-w-0">
+            <CompetitionLeaderboards
+              showCurrentUserPosition={true}
+              currentUserName={currentUserName}
+              weeklyLeaders={weeklyLeaders}
+              monthlyLeaders={monthlyLeaders}
+              annualLeaders={annualLeaders}
+              schoolLeaders={schoolLeaders}
+              mathLeaders={mathLeaders}
+              englishLeaders={englishLeaders}
+              currentUserRanks={currentUserRanks}
+              currentUserPoints={currentUserPoints}
+              defaultTab="weekly"
+            />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

@@ -4,6 +4,7 @@
  */
 
 import { StudentLevelInfo } from "./types";
+export type { StudentLevelInfo };
 
 interface MilestoneConfig {
   minEP: number;

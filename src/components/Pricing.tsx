@@ -54,7 +54,7 @@ export const Pricing = ({ onGetStartedClick }: PricingProps) => {
   ];
 
   return (
-    <section id="pricing" className="py-24 px-4 sm:px-6 lg:px-8 bg-slate-50 dark:bg-[#080f22] border-b border-slate-200 dark:border-[#202b43] relative overflow-hidden transition-colors duration-200">
+    <section id="pricing" className="py-24 px-4 sm:px-6 lg:px-8 border-b border-slate-200/50 dark:border-[#202b43]/50 relative overflow-hidden transition-colors duration-200">
       {/* Background ambient lighting */}
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-[#3bc2f3]/10 rounded-full blur-3xl pointer-events-none" />
 
